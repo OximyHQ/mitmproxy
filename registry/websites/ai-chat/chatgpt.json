@@ -28,7 +28,57 @@
         {
           "role": "both",
           "match": {
-            "url": "**/backend-api/f/conversation",
+            "url": "**/backend-api/conversation",
+            "method": "POST"
+          },
+          "pipeline": [
+            { "op": "parse", "format": "json", "apply_to": "request" },
+            {
+              "op": "stream",
+              "transport": "sse",
+              "apply_to": "response",
+              "options": {
+                "prefixes": ["data: "],
+                "skip": ["[DONE]"]
+              }
+            },
+            {
+              "op": "accumulate",
+              "apply_to": "response",
+              "rules": [
+                { "when": "type = 'resume_conversation_token'", "set": { "conversation_id": "conversation_id" } },
+                { "when": "type = 'title_generation'", "set": { "title": "title" } },
+                { "when": "$exists(v.message.author.role) and v.message.author.role = 'assistant' and v.message.content.content_type = 'text'", "set": { "message_id": "v.message.id", "model": "v.message.metadata.model_slug" } },
+                { "when": "o = 'append' and $exists(v) and $type(v) = 'string'", "set": { "content": "v" } },
+                { "when": "$exists(v) and $type(v) = 'string' and $not($exists(o))", "set": { "content": "v" } }
+              ],
+              "fields": {
+                "content": { "from": "content", "method": "concat" },
+                "conversation_id": { "from": "conversation_id", "method": "first" },
+                "title": { "from": "title", "method": "last" },
+                "message_id": { "from": "message_id", "method": "first" },
+                "model": { "from": "model", "method": "first" }
+              }
+            }
+          ],
+          "extract": {
+            "request.prompt": "messages[-1].content.parts[0]",
+            "request.message_id": "messages[-1].id",
+            "request.model": "model",
+            "request.parent_message_id": "parent_message_id",
+            "request.timezone": "timezone",
+            "request.conversation_mode": "conversation_mode.kind",
+            "response.content": "$accumulated.content",
+            "response.conversation_id": "$accumulated.conversation_id",
+            "response.title": "$accumulated.title",
+            "response.message_id": "$accumulated.message_id",
+            "response.model": "$accumulated.model"
+          }
+        },
+        {
+          "role": "both",
+          "match": {
+            "url": "**/backend-anon/**/conversation",
             "method": "POST"
           },
           "pipeline": [

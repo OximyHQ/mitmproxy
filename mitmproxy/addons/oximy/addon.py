@@ -457,7 +457,7 @@ class OximyAddon:
         url = flow.request.pretty_url
         method = flow.request.method
 
-        logger.debug(f"_match_flow: domain={domain}, url={url}, method={method}")
+        # logger.debug(f"_match_flow: domain={domain}, url={url}, method={method}")
 
         # Try to match as website by domain
         website_config = self._config_registry.get_for_domain(domain)
@@ -630,7 +630,10 @@ class OximyAddon:
         pipeline_ctx = PipelineContext.from_flow(flow)
 
         # Run detection processor to extract and cache context
-        detection_sources = config.get("detection", [])
+        # Use config_registry's flattening to handle nested dict format
+        detection_sources = self._config_registry._flatten_detection_sources(
+            config.get("detection", {})
+        )
         if detection_sources:
             detection_processor = get_detection_processor()
             extracted = detection_processor.process(pipeline_ctx, detection_sources, tool_id)
@@ -783,7 +786,10 @@ class OximyAddon:
 
         # Also try to process detection sources against this current request/response
         # (in case this endpoint also matches a detection source)
-        detection_sources = config.get("detection", [])
+        # Use config_registry's flattening to handle nested dict format
+        detection_sources = self._config_registry._flatten_detection_sources(
+            config.get("detection", {})
+        )
         if detection_sources:
             additional_context = detection_processor.process(
                 pipeline_ctx, detection_sources, tool_id

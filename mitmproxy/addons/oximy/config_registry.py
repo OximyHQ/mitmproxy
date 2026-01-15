@@ -70,9 +70,10 @@ class ConfigRegistry:
 
         self._configs[config_id] = config
 
-        # Index by domains (websites)
+        # Index by domains (websites) - check both 'domains' and 'api_domains'
         if source_type == "website":
-            domains = config.get("domains", [])
+            # Try 'domains' first, fall back to 'api_domains' (bundle uses api_domains for websites)
+            domains = config.get("domains") or config.get("api_domains") or []
             logger.debug(f"Indexing website {config_id} with domains: {domains}")
             for domain in domains:
                 self._domain_index[domain.lower()] = config
@@ -305,12 +306,24 @@ class ConfigRegistry:
         Returns:
             Detection source config if matched, None otherwise
         """
-        detection_sources = config.get("detection", [])
+        detection_config = config.get("detection", {})
+
+        # Flatten detection sources from nested dict format
+        # Format: {"subscription": [...], "user": [...], ...}
+        # Into a flat list with category attached
+        detection_sources = self._flatten_detection_sources(detection_config)
 
         for source in detection_sources:
+            # Skip if source is not a dict (invalid format)
+            if not isinstance(source, dict):
+                continue
+
+            # Support both formats:
+            # 1. Direct: {"url": "...", "extract": {...}}
+            # 2. Nested: {"match": {"url": "...", "method": "..."}, ...}
             match_config = source.get("match", {})
-            url_pattern = match_config.get("url")
-            required_method = match_config.get("method")
+            url_pattern = match_config.get("url") or source.get("url")
+            required_method = match_config.get("method") or source.get("method")
 
             # Check URL pattern
             if not url_pattern or not self._url_matches(url, url_pattern):
@@ -324,6 +337,45 @@ class ConfigRegistry:
             return source
 
         return None
+
+    def _flatten_detection_sources(self, detection_config: dict | list) -> list[dict]:
+        """
+        Flatten detection sources from various formats into a list.
+
+        Supports:
+        - List format: [{"url": "...", ...}, ...]
+        - Nested dict format: {"subscription": [...], "user": [...], ...}
+
+        Args:
+            detection_config: Detection config (dict or list)
+
+        Returns:
+            Flat list of detection source dicts with "_category" attached
+        """
+        if isinstance(detection_config, list):
+            # Already a list, return as-is
+            return detection_config
+
+        if not isinstance(detection_config, dict):
+            return []
+
+        # Flatten nested dict format
+        sources = []
+        for category, category_sources in detection_config.items():
+            if not isinstance(category_sources, list):
+                logger.warning(
+                    f"Detection category '{category}' is not a list, skipping"
+                )
+                continue
+
+            for source in category_sources:
+                if isinstance(source, dict):
+                    # Attach category for context
+                    source_with_category = source.copy()
+                    source_with_category["_category"] = category
+                    sources.append(source_with_category)
+
+        return sources
 
     def build_bundle_id_to_app_id_index(self) -> dict[str, str]:
         """

@@ -83,7 +83,7 @@
       "provider": "aws_bedrock"
     }
   ],
-  "generated_at": "2026-01-15T07:46:30.229136+00:00",
+  "generated_at": "2026-01-15T09:50:48.237300+00:00",
   "logos_url": "https://models.dev/logos",
   "models": {
     "abacus/Qwen-QwQ-32B": {
@@ -45754,7 +45754,106 @@
                 },
                 "match": {
                   "method": "POST",
-                  "url": "**/backend-api/f/conversation"
+                  "url": "**/backend-api/conversation"
+                },
+                "pipeline": [
+                  {
+                    "apply_to": "request",
+                    "format": "json",
+                    "op": "parse"
+                  },
+                  {
+                    "apply_to": "response",
+                    "op": "stream",
+                    "options": {
+                      "prefixes": [
+                        "data: "
+                      ],
+                      "skip": [
+                        "[DONE]"
+                      ]
+                    },
+                    "transport": "sse"
+                  },
+                  {
+                    "apply_to": "response",
+                    "fields": {
+                      "content": {
+                        "from": "content",
+                        "method": "concat"
+                      },
+                      "conversation_id": {
+                        "from": "conversation_id",
+                        "method": "first"
+                      },
+                      "message_id": {
+                        "from": "message_id",
+                        "method": "first"
+                      },
+                      "model": {
+                        "from": "model",
+                        "method": "first"
+                      },
+                      "title": {
+                        "from": "title",
+                        "method": "last"
+                      }
+                    },
+                    "op": "accumulate",
+                    "rules": [
+                      {
+                        "set": {
+                          "conversation_id": "conversation_id"
+                        },
+                        "when": "type = 'resume_conversation_token'"
+                      },
+                      {
+                        "set": {
+                          "title": "title"
+                        },
+                        "when": "type = 'title_generation'"
+                      },
+                      {
+                        "set": {
+                          "message_id": "v.message.id",
+                          "model": "v.message.metadata.model_slug"
+                        },
+                        "when": "$exists(v.message.author.role) and v.message.author.role = 'assistant' and v.message.content.content_type = 'text'"
+                      },
+                      {
+                        "set": {
+                          "content": "v"
+                        },
+                        "when": "o = 'append' and $exists(v) and $type(v) = 'string'"
+                      },
+                      {
+                        "set": {
+                          "content": "v"
+                        },
+                        "when": "$exists(v) and $type(v) = 'string' and $not($exists(o))"
+                      }
+                    ]
+                  }
+                ],
+                "role": "both"
+              },
+              {
+                "extract": {
+                  "request.conversation_mode": "conversation_mode.kind",
+                  "request.message_id": "messages[-1].id",
+                  "request.model": "model",
+                  "request.parent_message_id": "parent_message_id",
+                  "request.prompt": "messages[-1].content.parts[0]",
+                  "request.timezone": "timezone",
+                  "response.content": "$accumulated.content",
+                  "response.conversation_id": "$accumulated.conversation_id",
+                  "response.message_id": "$accumulated.message_id",
+                  "response.model": "$accumulated.model",
+                  "response.title": "$accumulated.title"
+                },
+                "match": {
+                  "method": "POST",
+                  "url": "**/backend-anon/**/conversation"
                 },
                 "pipeline": [
                   {

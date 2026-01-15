@@ -83,7 +83,7 @@
       "provider": "aws_bedrock"
     }
   ],
-  "generated_at": "2026-01-15T00:59:12.828054+00:00",
+  "generated_at": "2026-01-15T07:46:30.229136+00:00",
   "logos_url": "https://models.dev/logos",
   "models": {
     "abacus/Qwen-QwQ-32B": {
@@ -45968,8 +45968,8 @@
             "endpoints": [
               {
                 "extract": {
-                  "request.language": "$parse(f\\.req)[1][1][0]",
-                  "request.prompt": "$parse(f\\.req)[1][0][0]",
+                  "request.language": "$parseJson($request[\"f.req\"])[1][1][0]",
+                  "request.prompt": "$parseJson($request[\"f.req\"])[1][0][0]",
                   "response.content": "$accumulated.content",
                   "response.conversation_id": "$accumulated.conversation_id",
                   "response.model": "$accumulated.model",
@@ -46079,7 +46079,7 @@
             "endpoints": [
               {
                 "extract": {
-                  "request.prompt": "$parse(f\\.req)[1][0][0]",
+                  "request.prompt": "$parseJson($request[\"f.req\"])[1][0][0]",
                   "response.conversation_id": "$accumulated.conversation_id",
                   "response.image_count": "$count($accumulated.images)",
                   "response.images": "$accumulated.images[*][3] ? $accumulated.images[*][3] : $accumulated.images[*][6]",

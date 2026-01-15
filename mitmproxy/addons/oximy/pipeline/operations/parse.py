@@ -34,8 +34,11 @@ def parse_op(context: PipelineContext, config: dict) -> PipelineContext:
     Config options:
         format: str - Format to parse (json, xml, form, graphql, yaml, msgpack, jwt)
         apply_to: str - "request", "response", or "both" (default: "both")
-        nested_parse: str - JSONata path to a string field to parse as JSON again
+        nested_parse: str - Path to a string field to parse as JSON (e.g., "[0][2]")
         prefix_strip: str - Prefix to strip before parsing (e.g., "//" for anti-XSSI)
+
+    If response_data/stream_chunks already exist (e.g., from stream op) and nested_parse
+    is specified, the nested_parse will be applied to each chunk instead of re-parsing.
 
     Args:
         context: Pipeline context with raw bytes
@@ -65,7 +68,15 @@ def parse_op(context: PipelineContext, config: dict) -> PipelineContext:
                 context.request_data = parsed
 
     if apply_to in ("response", "both"):
-        if context.response_body:
+        # If stream_chunks exist and we have nested_parse, apply to each chunk
+        if context.stream_chunks and nested_parse:
+            parsed_chunks = []
+            for chunk in context.stream_chunks:
+                parsed_chunk = _apply_nested_parse(chunk, nested_parse)
+                parsed_chunks.append(parsed_chunk)
+            context.stream_chunks = parsed_chunks
+            context.response_data = parsed_chunks
+        elif context.response_body:
             data = context.response_body
             if prefix_strip and isinstance(data, bytes):
                 data = _strip_prefix(data, prefix_strip)
@@ -209,49 +220,99 @@ def _apply_nested_parse(data: Any, path: str) -> Any:
     contains a JSON string that needs to be parsed again.
 
     Args:
-        data: Already parsed data
-        path: Simple dot-notation path to the field (e.g., "data.content")
+        data: Already parsed data (can be dict or list)
+        path: Path to the field, supports both bracket notation ([0][2])
+              and dot notation (data.content)
 
     Returns:
-        Data with nested field parsed
+        Data with nested field parsed, or extracted nested data
     """
-    if not isinstance(data, dict):
+    if data is None:
         return data
 
-    # Simple path navigation (not full JSONata)
-    parts = path.split(".")
-    current = data
-    parent = None
-    last_key = None
+    # Handle stream chunks that wrap arrays in {"_items": [...]}
+    # This allows paths like [0][2] to work on stream output
+    if isinstance(data, dict) and "_items" in data and path.startswith("["):
+        data = data["_items"]
 
+    # Parse the path into parts, handling bracket notation
+    parts = _parse_path(path)
+    if not parts:
+        return data
+
+    # Navigate to the target
+    current = data
     for part in parts:
-        if isinstance(current, dict) and part in current:
-            parent = current
-            last_key = part
-            current = current[part]
-        elif isinstance(current, list):
-            try:
-                idx = int(part)
-                parent = current
-                last_key = idx
-                current = current[idx]
-            except (ValueError, IndexError):
+        if current is None:
+            return data
+
+        if isinstance(part, int):
+            # Array index
+            if isinstance(current, list) and 0 <= part < len(current):
+                current = current[part]
+            else:
                 return data
+        elif isinstance(current, dict) and part in current:
+            current = current[part]
         else:
             return data
 
-    # Try to parse the found string as JSON
-    if isinstance(current, str) and parent is not None and last_key is not None:
+    # If we found a string, parse it as JSON and return the parsed result
+    if isinstance(current, str):
         try:
-            parsed = json.loads(current)
-            if isinstance(parent, dict) and isinstance(last_key, str):
-                parent[last_key] = parsed
-            elif isinstance(parent, list) and isinstance(last_key, int):
-                parent[last_key] = parsed
+            return json.loads(current)
         except json.JSONDecodeError:
-            pass
+            return current
 
-    return data
+    return current
+
+
+def _parse_path(path: str) -> list[str | int]:
+    """
+    Parse a path string into parts.
+
+    Handles:
+    - Bracket notation: [0][2]
+    - Dot notation: data.content
+    - Mixed: data[0].content
+
+    Returns list of string keys and int indices.
+    """
+    parts: list[str | int] = []
+    current = ""
+    i = 0
+
+    while i < len(path):
+        char = path[i]
+
+        if char == ".":
+            if current:
+                parts.append(current)
+                current = ""
+        elif char == "[":
+            if current:
+                parts.append(current)
+                current = ""
+            # Find closing bracket
+            j = i + 1
+            while j < len(path) and path[j] != "]":
+                j += 1
+            bracket_content = path[i + 1:j]
+            # Check if it's an integer index
+            try:
+                parts.append(int(bracket_content))
+            except ValueError:
+                parts.append(bracket_content)
+            i = j
+        else:
+            current += char
+
+        i += 1
+
+    if current:
+        parts.append(current)
+
+    return parts
 
 
 def parse_json(data: bytes | str) -> Any:

@@ -82,6 +82,8 @@ def evaluate_expression(expr: str, context: dict) -> Any:
     - $accumulated. -> context["accumulated"]
     - $headers. -> context["headers"]
 
+    Also supports bracket notation: $request["key.with.dots"]
+
     Args:
         expr: JSONata expression
         context: Evaluation context dict
@@ -91,15 +93,17 @@ def evaluate_expression(expr: str, context: dict) -> Any:
     """
     expr = expr.strip()
 
-    # Handle special variable prefixes
-    if expr.startswith("$request."):
-        return _evaluate_path(expr[9:], context.get("request"))
-    if expr.startswith("$response."):
-        return _evaluate_path(expr[10:], context.get("response"))
-    if expr.startswith("$accumulated."):
-        return _evaluate_path(expr[13:], context.get("accumulated"))
-    if expr.startswith("$headers."):
-        return _evaluate_path(expr[9:], context.get("headers"))
+    # Handle special variable prefixes with dot or bracket notation
+    for var_name in ["request", "response", "accumulated", "headers"]:
+        prefix = f"${var_name}"
+        if expr.startswith(prefix):
+            rest = expr[len(prefix):]
+            if rest.startswith("."):
+                return _evaluate_path(rest[1:], context.get(var_name))
+            elif rest.startswith("["):
+                return _evaluate_path(rest, context.get(var_name))
+            elif not rest:
+                return context.get(var_name)
 
     # Handle literal strings
     if (expr.startswith("'") and expr.endswith("'")) or (
@@ -185,23 +189,37 @@ def _evaluate_path(path: str, data: Any) -> Any:
 
 
 def _split_path(path: str) -> list[str]:
-    """Split a path into parts, handling brackets and filters."""
+    """Split a path into parts, handling brackets, filters, and quoted keys."""
     parts = []
     current = ""
     bracket_depth = 0
+    in_quotes = False
+    quote_char = None
 
-    for char in path:
+    i = 0
+    while i < len(path):
+        char = path[i]
+
+        # Track quote state
+        if char in ('"', "'") and bracket_depth > 0:
+            if not in_quotes:
+                in_quotes = True
+                quote_char = char
+            elif char == quote_char:
+                in_quotes = False
+                quote_char = None
+
         if char == "." and bracket_depth == 0:
             if current:
                 parts.append(current)
                 current = ""
-        elif char == "[":
+        elif char == "[" and not in_quotes:
             if current and bracket_depth == 0:
                 parts.append(current)
                 current = ""
             current += char
             bracket_depth += 1
-        elif char == "]":
+        elif char == "]" and not in_quotes:
             current += char
             bracket_depth -= 1
             if bracket_depth == 0:
@@ -209,6 +227,8 @@ def _split_path(path: str) -> list[str]:
                 current = ""
         else:
             current += char
+
+        i += 1
 
     if current:
         parts.append(current)
@@ -218,8 +238,12 @@ def _split_path(path: str) -> list[str]:
     for part in parts:
         if part.startswith("[") and part.endswith("]"):
             inner = part[1:-1]
+            # Check if it's a quoted string key like ["f.req"]
+            if (inner.startswith('"') and inner.endswith('"')) or \
+               (inner.startswith("'") and inner.endswith("'")):
+                cleaned.append(inner[1:-1])  # Remove quotes, keep the key
             # Check if it's an index or filter
-            if inner.isdigit() or inner == "*" or "=" in inner:
+            elif inner.isdigit() or inner == "*" or "=" in inner:
                 cleaned.append(inner if inner.isdigit() or inner == "*" else part)
             else:
                 cleaned.append(inner)
@@ -230,7 +254,9 @@ def _split_path(path: str) -> list[str]:
 
 
 def _evaluate_function(expr: str, context: dict) -> Any:
-    """Evaluate built-in functions."""
+    """Evaluate built-in functions, including chained path access."""
+    import json as json_module
+
     # $exists(path)
     if expr.startswith("$exists(") and expr.endswith(")"):
         path = expr[8:-1].strip()
@@ -270,21 +296,62 @@ def _evaluate_function(expr: str, context: dict) -> Any:
             return "object"
         return "unknown"
 
-    # $parseJson(expr) - parse a JSON string
-    if expr.startswith("$parseJson(") and expr.endswith(")"):
-        inner_expr = expr[11:-1].strip()
+    # $parseJson(expr) with optional chained path like $parseJson(...)[1][0][0]
+    if expr.startswith("$parseJson("):
+        # Find the matching closing paren for the function call
+        func_end = _find_matching_paren(expr, 10)  # 10 = len("$parseJson(") - 1
+        if func_end == -1:
+            return None
+
+        inner_expr = expr[11:func_end].strip()
+        remaining_path = expr[func_end + 1:]
+
+        # Evaluate the inner expression
         value = evaluate_expression(inner_expr, context)
+
+        # Parse JSON if it's a string
         if isinstance(value, str):
-            import json
             try:
-                return json.loads(value)
-            except json.JSONDecodeError:
+                value = json_module.loads(value)
+            except json_module.JSONDecodeError:
                 return None
+
+        # If there's a remaining path like [1][0][0], apply it
+        if remaining_path and value is not None:
+            value = _evaluate_path(remaining_path, value)
+
         return value
 
     # Unknown function
     logger.debug(f"Unknown function: {expr}")
     return None
+
+
+def _find_matching_paren(expr: str, start: int) -> int:
+    """Find the index of the closing paren matching the open paren at start."""
+    depth = 1
+    in_quotes = False
+    quote_char = None
+
+    for i in range(start + 1, len(expr)):
+        char = expr[i]
+
+        # Track quote state
+        if char in ('"', "'") and not in_quotes:
+            in_quotes = True
+            quote_char = char
+        elif char == quote_char and in_quotes:
+            in_quotes = False
+            quote_char = None
+        elif not in_quotes:
+            if char == "(":
+                depth += 1
+            elif char == ")":
+                depth -= 1
+                if depth == 0:
+                    return i
+
+    return -1
 
 
 def _is_complex_expression(expr: str) -> bool:

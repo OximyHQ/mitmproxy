@@ -9,8 +9,8 @@ Loads configs from the bundle and provides lookup methods for:
 
 from __future__ import annotations
 
-import fnmatch
 import logging
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -214,33 +214,82 @@ class ConfigRegistry:
         """
         Check if a URL matches a glob pattern.
 
-        Supports patterns like:
-        - **/api/chat/* - Match any path containing /api/chat/
-        - **/backend-api/f/conversation - Match exact path
-        - https://api.example.com/* - Match specific domain
+        Supports glob-style patterns with ** for recursive matching:
+        - ** matches zero or more path segments (like gitignore)
+        - * matches any characters except /
+        - ? matches a single character
+
+        Examples:
+        - **/api/chat     -> matches /api/chat, /v1/api/chat, /_/foo/api/chat
+        - /api/**/chat    -> matches /api/chat, /api/v1/chat, /api/a/b/c/chat
+        - https://x.com/* -> matches any path on x.com
         """
-        # Extract path from URL for matching
         from urllib.parse import urlparse
 
         parsed = urlparse(url)
         path = parsed.path
 
-        # Handle ** prefix (match any domain)
-        if pattern.startswith("**/"):
-            path_pattern = pattern[3:]
-            # Try with leading slash
-            if fnmatch.fnmatch(path, "/" + path_pattern):
-                return True
-            # Try without leading slash
-            if fnmatch.fnmatch(path, path_pattern):
-                return True
-            # Try path without leading slash against pattern
-            if fnmatch.fnmatch(path.lstrip("/"), path_pattern):
-                return True
-            return False
+        # Determine what to match against
+        if pattern.startswith("http://") or pattern.startswith("https://"):
+            match_against = url.split("?")[0]  # Full URL without query string
+        else:
+            match_against = path
 
-        # Full URL pattern
-        return fnmatch.fnmatch(url, pattern)
+        # Convert glob pattern to regex
+        regex = self._glob_to_regex(pattern)
+        return regex.match(match_against) is not None
+
+    def _glob_to_regex(self, pattern: str) -> re.Pattern[str]:
+        """
+        Convert a glob pattern to a compiled regex.
+
+        - ** matches zero or more of any characters (including /)
+        - * at end of pattern matches everything (including /)
+        - * elsewhere matches any characters except /
+        - ? matches a single character except /
+        - All other characters are escaped
+        """
+        # Handle pattern prefix
+        if pattern.startswith("**/"):
+            # ** at start means "match any prefix"
+            pattern = pattern[3:]
+            prefix = ".*"
+        elif pattern.startswith("http://") or pattern.startswith("https://"):
+            # Full URL pattern - start of string match
+            prefix = "^"
+        else:
+            prefix = "^"
+
+        # Build regex piece by piece
+        regex_parts = []
+        i = 0
+        pattern_len = len(pattern)
+        while i < pattern_len:
+            if pattern[i:i+2] == "**":
+                # ** matches zero or more of anything (including /)
+                regex_parts.append(".*")
+                i += 2
+                # Skip trailing slash after **
+                if i < pattern_len and pattern[i] == "/":
+                    i += 1
+            elif pattern[i] == "*":
+                # * at end matches everything, otherwise matches except /
+                if i == pattern_len - 1:
+                    regex_parts.append(".*")
+                else:
+                    regex_parts.append("[^/]*")
+                i += 1
+            elif pattern[i] == "?":
+                # ? matches single character except /
+                regex_parts.append("[^/]")
+                i += 1
+            else:
+                # Escape special regex characters
+                regex_parts.append(re.escape(pattern[i]))
+                i += 1
+
+        regex_str = prefix + "".join(regex_parts) + "$"
+        return re.compile(regex_str)
 
     def match_detection_source(
         self, url: str, config: dict, method: str | None = None

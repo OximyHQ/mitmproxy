@@ -66,8 +66,8 @@
             }
           ],
           "extract": {
-            "request.prompt": "$parse(f\\.req)[1][0][0]",
-            "request.language": "$parse(f\\.req)[1][1][0]",
+            "request.prompt": "$parseJson($request[\"f.req\"])[1][0][0]",
+            "request.language": "$parseJson($request[\"f.req\"])[1][1][0]",
             "response.content": "$accumulated.content",
             "response.conversation_id": "$accumulated.conversation_id",
             "response.response_id": "$accumulated.response_id",
@@ -145,7 +145,7 @@
             }
           ],
           "extract": {
-            "request.prompt": "$parse(f\\.req)[1][0][0]",
+            "request.prompt": "$parseJson($request[\"f.req\"])[1][0][0]",
             "response.conversation_id": "$accumulated.conversation_id",
             "response.response_id": "$accumulated.response_id",
             "response.tool": "$accumulated.tool_name",

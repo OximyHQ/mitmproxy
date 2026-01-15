@@ -1,0 +1,161 @@
+{
+  "$schema": "../tool-config.schema.json",
+
+  "id": "chatgpt",
+  "name": "ChatGPT",
+  "vendor": "OpenAI",
+  "vendor_url": "https://openai.com",
+  "category": "ai-chat",
+
+  "source_type": "website",
+
+  "domains": [
+    "chatgpt.com",
+    "chat.openai.com"
+  ],
+
+  "meta": {
+    "docs_url": "https://help.openai.com/en/collections/3742473-chatgpt"
+  },
+
+  "features": {
+    "chat": {
+      "type": "chat",
+      "name": "Chat",
+      "description": "Chat with ChatGPT. Uses custom delta encoding SSE format.",
+
+      "endpoints": [
+        {
+          "role": "both",
+          "match": {
+            "url": "**/backend-api/f/conversation",
+            "method": "POST"
+          },
+          "pipeline": [
+            { "op": "parse", "format": "json", "apply_to": "request" },
+            {
+              "op": "stream",
+              "transport": "sse",
+              "apply_to": "response",
+              "options": {
+                "prefixes": ["data: "],
+                "skip": ["[DONE]"]
+              }
+            },
+            {
+              "op": "accumulate",
+              "apply_to": "response",
+              "rules": [
+                { "when": "type = 'resume_conversation_token'", "set": { "conversation_id": "conversation_id" } },
+                { "when": "type = 'title_generation'", "set": { "title": "title" } },
+                { "when": "$exists(v.message.author.role) and v.message.author.role = 'assistant' and v.message.content.content_type = 'text'", "set": { "message_id": "v.message.id", "model": "v.message.metadata.model_slug" } },
+                { "when": "o = 'append' and $exists(v) and $type(v) = 'string'", "set": { "content": "v" } },
+                { "when": "$exists(v) and $type(v) = 'string' and $not($exists(o))", "set": { "content": "v" } }
+              ],
+              "fields": {
+                "content": { "from": "content", "method": "concat" },
+                "conversation_id": { "from": "conversation_id", "method": "first" },
+                "title": { "from": "title", "method": "last" },
+                "message_id": { "from": "message_id", "method": "first" },
+                "model": { "from": "model", "method": "first" }
+              }
+            }
+          ],
+          "extract": {
+            "request.prompt": "messages[-1].content.parts[0]",
+            "request.message_id": "messages[-1].id",
+            "request.model": "model",
+            "request.parent_message_id": "parent_message_id",
+            "request.timezone": "timezone",
+            "request.conversation_mode": "conversation_mode.kind",
+            "response.content": "$accumulated.content",
+            "response.conversation_id": "$accumulated.conversation_id",
+            "response.title": "$accumulated.title",
+            "response.message_id": "$accumulated.message_id",
+            "response.model": "$accumulated.model"
+          }
+        }
+      ],
+
+      "output": {
+        "mode": "extract",
+        "tag": "ai:chat",
+        "normalize": {
+          "interaction.type": "'chat'",
+          "interaction.input.text": "$request.prompt",
+          "interaction.input.message_id": "$request.message_id",
+          "interaction.output.text": "$response.content",
+          "interaction.output.message_id": "$response.message_id",
+          "interaction.conversation_id": "$response.conversation_id",
+          "interaction.title": "$response.title",
+          "interaction.model": "$response.model",
+          "interaction.parent_message_id": "$request.parent_message_id"
+        },
+        "include_raw": false
+      }
+    }
+  },
+
+  "detection": [
+    {
+      "id": "user_profile",
+      "match": { "url": "**/backend-api/me", "method": "GET" },
+      "pipeline": [
+        { "op": "decode", "encoding": "base64" },
+        { "op": "parse", "format": "json" }
+      ],
+      "extract": {
+        "user.id": "id",
+        "user.email": "email",
+        "user.name": "name",
+        "user.picture": "picture",
+        "user.phone": "phone_number",
+        "user.mfa_enabled": "mfa_flag_enabled",
+        "user.created": "created"
+      }
+    },
+    {
+      "id": "subscription",
+      "match": { "url": "**/backend-api/subscriptions", "method": "GET" },
+      "pipeline": [
+        { "op": "decode", "encoding": "base64" },
+        { "op": "parse", "format": "json" }
+      ],
+      "extract": {
+        "subscription.id": "id",
+        "subscription.plan": "plan_type",
+        "subscription.billing_period": "billing_period",
+        "subscription.will_renew": "will_renew",
+        "subscription.active_until": "active_until",
+        "subscription.currency": "billing_currency",
+        "subscription.is_delinquent": "is_delinquent"
+      }
+    },
+    {
+      "id": "account_info",
+      "match": { "url": "**/backend-api/accounts/check/*", "method": "GET" },
+      "pipeline": [
+        { "op": "decode", "encoding": "base64" },
+        { "op": "parse", "format": "json" }
+      ],
+      "extract": {
+        "account.id": "accounts.*.account.account_id",
+        "account.plan_type": "accounts.*.account.plan_type",
+        "account.structure": "accounts.*.account.structure",
+        "account.has_previously_paid": "accounts.*.account.has_previously_paid_subscription",
+        "account.is_deactivated": "accounts.*.account.is_deactivated"
+      }
+    }
+  ],
+
+  "pricing": {
+    "model": ["free", "subscription"],
+    "tiers": [
+      { "id": "free", "name": "Free", "type": "free", "monthly_usd": 0 },
+      { "id": "plus", "name": "Plus", "type": "individual", "monthly_usd": 20 },
+      { "id": "pro", "name": "Pro", "type": "individual", "monthly_usd": 200 },
+      { "id": "team", "name": "Team", "type": "team", "monthly_usd": 25 },
+      { "id": "enterprise", "name": "Enterprise", "type": "enterprise", "monthly_usd": null }
+    ]
+  }
+}

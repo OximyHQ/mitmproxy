@@ -1,0 +1,113 @@
+{
+  "$schema": "../schemas/tool-config.schema.json",
+  "id": "wispr-flow",
+  "name": "Wispr Flow",
+  "vendor": "Wispr",
+  "vendor_url": "https://wisprflow.ai",
+  "category": "voice",
+  "source_type": "app",
+  "api_domains": [
+    "api.wisprflow.ai"
+  ],
+  "signatures": {
+    "macos": {
+      "bundle_id": "com.electron.wispr-flow",
+      "team_id": "C9VQZ78H85"
+    }
+  },
+  "icon": "wispr-flow.png",
+  "meta": {
+    "description": "AI-powered voice dictation and transcription tool",
+    "note": "Actual transcription happens over WebSocket (not captured in HAR). Detection via analytics events."
+  },
+  "features": {
+    "transcription": {
+      "type": "other",
+      "name": "Voice Transcription",
+      "description": "Real-time voice-to-text transcription with formatting. Detected via analytics events.",
+      "endpoints": [
+        {
+          "role": "detect",
+          "match": {
+            "url": "**/api/v1/analytics/track",
+            "method": "POST"
+          },
+          "pipeline": [
+            {
+              "op": "parse",
+              "format": "json",
+              "apply_to": "request"
+            }
+          ],
+          "extract": {
+            "event_type": "event",
+            "transcript_id": "properties.transcriptEntityUUID",
+            "status": "properties.status",
+            "target_app": "properties.appName",
+            "target_bundle_id": "properties.appBundleID",
+            "recording_length_ms": "properties.timingInformation.recordingLength",
+            "asr_time_ms": "properties.basetenNetworkMetrics.asrTimeMsecs",
+            "llm_time_ms": "properties.basetenNetworkMetrics.llmTimeMsecs",
+            "total_duration_ms": "properties.basetenNetworkMetrics.totalDurationMsecs"
+          }
+        }
+      ],
+      "output": {
+        "mode": "detect",
+        "tag": "ai:transcription",
+        "normalize": {
+          "interaction.type": "'transcription'",
+          "interaction.event": "$request.event_type",
+          "interaction.transcript_id": "$request.transcript_id",
+          "interaction.status": "$request.status",
+          "interaction.target.app": "$request.target_app",
+          "interaction.target.bundle_id": "$request.target_bundle_id",
+          "interaction.timing.recording_ms": "$request.recording_length_ms",
+          "interaction.timing.asr_ms": "$request.asr_time_ms",
+          "interaction.timing.llm_ms": "$request.llm_time_ms",
+          "interaction.timing.total_ms": "$request.total_duration_ms"
+        },
+        "include_raw": false
+      }
+    }
+  },
+  "detection": [
+    {
+      "id": "user_session",
+      "match": {
+        "url": "**/api/v1/analytics/track",
+        "method": "POST"
+      },
+      "extract_from": "request_body",
+      "when": "$exists(user_id)",
+      "extract": {
+        "user.id": "user_id",
+        "session.id": "properties.sessionId",
+        "device.id": "properties.deviceId",
+        "app.version": "properties.version",
+        "app.environment": "properties.environment",
+        "device.platform": "properties.platform",
+        "device.architecture": "properties.architecture"
+      }
+    }
+  ],
+  "pricing": {
+    "model": [
+      "subscription"
+    ],
+    "tiers": [
+      {
+        "id": "trial",
+        "name": "Trial",
+        "type": "free",
+        "monthly_usd": 0
+      },
+      {
+        "id": "pro",
+        "name": "Pro",
+        "type": "individual",
+        "monthly_usd": 15
+      }
+    ]
+  }
+}

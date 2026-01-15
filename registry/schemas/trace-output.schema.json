@@ -1,0 +1,540 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "oximy/trace/1.0",
+  "title": "Oximy Trace Output Schema",
+  "description": "Output schema for captured AI tool interactions",
+  "type": "object",
+  "required": [
+    "event_id",
+    "timestamp",
+    "source",
+    "trace_level",
+    "interaction"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Schema version reference"
+    },
+    "event_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique identifier for this event"
+    },
+    "parent_event_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "uuid",
+      "description": "Parent event ID for nested/agentic interactions"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO8601 timestamp when event was captured"
+    },
+    "source": {
+      "type": "object",
+      "required": [
+        "type",
+        "tool_id",
+        "feature"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "app",
+            "website"
+          ],
+          "description": "Source type"
+        },
+        "tool_id": {
+          "type": "string",
+          "description": "Tool identifier from config"
+        },
+        "tool_name": {
+          "type": "string",
+          "description": "Human-readable tool name"
+        },
+        "feature": {
+          "type": "string",
+          "description": "Feature key that was triggered"
+        },
+        "vendor": {
+          "type": "string",
+          "description": "Tool vendor name"
+        }
+      }
+    },
+    "trace_level": {
+      "type": "string",
+      "enum": [
+        "full_extraction",
+        "feature_extraction",
+        "metadata_only",
+        "error"
+      ],
+      "description": "Level of data captured: full_extraction (all data + raw payloads), feature_extraction (parsed interaction fields only), metadata_only (tool detected but content not parsed), error (capture failed)"
+    },
+    "transport": {
+      "type": "object",
+      "description": "Network transport details",
+      "properties": {
+        "protocol": {
+          "type": "string",
+          "enum": [
+            "http",
+            "https",
+            "ws",
+            "wss",
+            "grpc"
+          ],
+          "description": "Transport protocol"
+        },
+        "method": {
+          "type": "string",
+          "description": "HTTP method or WS for WebSocket"
+        },
+        "url": {
+          "type": "string",
+          "description": "Request URL"
+        },
+        "status_code": {
+          "type": "integer",
+          "description": "HTTP response status code"
+        },
+        "content_type": {
+          "type": "string",
+          "description": "Response content type"
+        },
+        "referer": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Referer header"
+        },
+        "origin": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Origin header"
+        }
+      }
+    },
+    "timing": {
+      "type": "object",
+      "description": "Request timing information",
+      "properties": {
+        "started_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When request started"
+        },
+        "duration_ms": {
+          "type": "integer",
+          "description": "Total request duration in milliseconds"
+        },
+        "ttfb_ms": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "Time to first byte in milliseconds"
+        }
+      }
+    },
+    "client": {
+      "type": "object",
+      "description": "Client process information (for apps/CLI tools)",
+      "properties": {
+        "pid": {
+          "type": "integer",
+          "description": "Process ID of the actual AI tool (not the wrapper)"
+        },
+        "name": {
+          "type": "string",
+          "description": "Process name of the actual AI tool"
+        },
+        "path": {
+          "type": "string",
+          "description": "Executable path of the AI tool"
+        },
+        "parent_pid": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "Parent process ID"
+        },
+        "parent_name": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Parent process name"
+        },
+        "wrapper": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "For CLI/website tools: the host app (Terminal, Browser, IDE)",
+          "properties": {
+            "pid": {
+              "type": "integer"
+            },
+            "name": {
+              "type": "string",
+              "description": "e.g., Terminal, Chrome, Cursor"
+            },
+            "bundle_id": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Wrapper app bundle ID"
+            }
+          }
+        },
+        "user": {
+          "type": "string",
+          "description": "Username running the process"
+        },
+        "tool_id": {
+          "type": "string",
+          "description": "Resolved tool identifier from config (the AI tool, not wrapper)"
+        },
+        "port": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "Local port"
+        }
+      }
+    },
+    "interaction": {
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "description": "The AI interaction data",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "chat",
+            "codegen",
+            "asset_creation",
+            "text_manipulation",
+            "platform_output",
+            "other"
+          ],
+          "description": "Type of interaction"
+        },
+        "name": {
+          "type": "string",
+          "description": "Human-readable interaction name"
+        },
+        "input": {
+          "type": "object",
+          "description": "Input/request data",
+          "properties": {
+            "text": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Text prompt/query/task"
+            },
+            "files": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string"
+                  },
+                  "size": {
+                    "type": "integer"
+                  },
+                  "id": {
+                    "type": "string"
+                  }
+                }
+              },
+              "description": "Attached files"
+            },
+            "context": {
+              "type": [
+                "string",
+                "object",
+                "null"
+              ],
+              "description": "System prompt or additional context"
+            },
+            "parameters": {
+              "type": "object",
+              "additionalProperties": true,
+              "description": "Additional parameters (temperature, etc.)"
+            }
+          }
+        },
+        "output": {
+          "type": "object",
+          "description": "Output/response data",
+          "properties": {
+            "text": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Text response/result"
+            },
+            "thinking": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Extended thinking/reasoning content"
+            },
+            "artifacts": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "image",
+                      "code",
+                      "file",
+                      "preview_url",
+                      "document"
+                    ]
+                  },
+                  "url": {
+                    "type": "string"
+                  },
+                  "content": {
+                    "type": "string"
+                  },
+                  "filename": {
+                    "type": "string"
+                  },
+                  "metadata": {
+                    "type": "object"
+                  }
+                }
+              },
+              "description": "Generated artifacts (images, code, files)"
+            },
+            "actions": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string"
+                  },
+                  "detail": {
+                    "type": "object"
+                  }
+                }
+              },
+              "description": "Actions taken (for agents)"
+            },
+            "tool_calls": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "arguments": {
+                    "type": "object"
+                  },
+                  "result": {
+                    "type": [
+                      "string",
+                      "object",
+                      "null"
+                    ]
+                  }
+                }
+              },
+              "description": "Tool/function calls made"
+            },
+            "citations": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "url": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "snippet": {
+                    "type": "string"
+                  }
+                }
+              },
+              "description": "Source citations"
+            }
+          }
+        },
+        "model": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "AI model used"
+        },
+        "conversation_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Conversation/session identifier"
+        },
+        "message_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Message identifier"
+        },
+        "turn_index": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "Turn number in conversation"
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Capabilities/features used (e.g., extended_thinking, web_search)"
+        }
+      }
+    },
+    "usage": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "Token/resource usage",
+      "properties": {
+        "input_tokens": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "output_tokens": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "total_tokens": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "cost_usd": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      }
+    },
+    "context": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "Extracted context/metadata from detection sources. Flexible key-value structure supporting any category (subscription, user, org, rate_limit, workspace, etc.)",
+      "additionalProperties": true,
+      "examples": [
+        {
+          "subscription": {
+            "plan": "pro",
+            "billing_interval": "monthly"
+          },
+          "user": {
+            "id": "user_123",
+            "email": "user@example.com"
+          },
+          "org": {
+            "id": "org_456",
+            "name": "Acme Corp"
+          },
+          "rate_limit": {
+            "remaining": 100,
+            "limit": 1000,
+            "reset_at": "2024-01-15T00:00:00Z"
+          }
+        }
+      ]
+    },
+    "error": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "Error information if request failed",
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "status": {
+          "type": "integer"
+        }
+      }
+    },
+    "meta": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Tool-specific metadata"
+    },
+    "_raw": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "Original request/response payloads",
+      "properties": {
+        "request": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "response": {
+          "type": [
+            "object",
+            "null"
+          ]
+        }
+      }
+    }
+  }
+}

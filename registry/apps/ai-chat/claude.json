@@ -1,110 +1,158 @@
 {
-  "name": "Claude",
+  "$schema": "../schemas/tool-config.schema.json",
+
+  "id": "claude",
+  "name": "Claude Desktop",
   "vendor": "Anthropic",
   "vendor_url": "https://anthropic.com",
   "category": "ai-chat",
-  "platforms": [
-    "macos",
-    "windows"
-  ],
-  "signatures": {
-    "macos": {
-      "bundle_id": "com.anthropic.claudefordesktop",
-      "team_id": "Q6L2SF6YDW"
-    }
-  },
-  "icon": "claude.png",
+
+  "source_type": "app",
+
   "api_domains": [
     "claude.ai",
     "api.anthropic.com",
     "a-api.anthropic.com"
   ],
+
+  "signatures": {
+    "macos": {
+      "bundle_id": "com.anthropic.claudefordesktop",
+      "team_id": "Q6L2SF6YDW"
+    },
+    "windows": {
+      "exe_name": "Claude.exe",
+      "publisher": "Anthropic"
+    }
+  },
+
+  "icon": "claude.png",
+
+  "meta": {
+    "docs_url": "https://docs.anthropic.com"
+  },
+
   "features": {
     "chat": {
       "type": "chat",
       "name": "Chat Conversation",
-      "description": "Chat with Claude AI assistant",
-      "patterns": {
-        "request": {
-          "url": "**/api/organizations/*/chat_conversations/*/completion",
-          "method": "POST"
-        },
-        "response": {
-          "url": "**/api/organizations/*/chat_conversations/*",
-          "method": "GET",
-          "query_params": [
-            "tree=True"
-          ]
+      "description": "Real-time SSE streaming of Claude responses with extended thinking",
+
+      "endpoints": [
+        {
+          "role": "both",
+          "match": {
+            "url": "**/api/organizations/*/chat_conversations/*/completion",
+            "method": "POST"
+          },
+          "pipeline": [
+            { "op": "parse", "format": "json", "apply_to": "request" },
+            {
+              "op": "stream",
+              "transport": "sse",
+              "apply_to": "response",
+              "options": {
+                "prefixes": ["data: "],
+                "skip": ["[DONE]"]
+              }
+            },
+            {
+              "op": "accumulate",
+              "apply_to": "response",
+              "rules": [
+                { "when": "type = 'message_start'", "set": { "model": "message.model", "message_id": "message.uuid" } },
+                { "when": "type = 'content_block_start' and content_block.type = 'thinking'", "set": { "has_thinking": "true" } },
+                { "when": "type = 'content_block_delta' and delta.type = 'text_delta'", "set": { "content": "delta.text" } },
+                { "when": "type = 'content_block_delta' and delta.type = 'thinking_delta'", "set": { "thinking": "delta.thinking" } },
+                { "when": "type = 'content_block_delta' and delta.type = 'thinking_summary_delta'", "set": { "thinking_summary": "delta.summary.summary" } },
+                { "when": "type = 'message_stop'", "set": { "completed": "true" } }
+              ],
+              "fields": {
+                "content": { "from": "content", "method": "concat" },
+                "thinking": { "from": "thinking", "method": "concat" },
+                "thinking_summary": { "from": "thinking_summary", "method": "last" },
+                "model": { "from": "model", "method": "first" },
+                "message_id": { "from": "message_id", "method": "first" },
+                "has_thinking": { "from": "has_thinking", "method": "first" }
+              }
+            }
+          ],
+          "extract": {
+            "request.prompt": "prompt",
+            "request.parent_message": "parent_message_uuid",
+            "request.file_uuids": "files",
+            "request.has_files": "$count(files) > 0",
+            "response.content": "$accumulated.content",
+            "response.thinking": "$accumulated.thinking",
+            "response.thinking_summary": "$accumulated.thinking_summary",
+            "response.model": "$accumulated.model",
+            "response.message_id": "$accumulated.message_id",
+            "response.has_thinking": "$accumulated.has_thinking"
+          }
         }
-      },
-      "parser": {
-        "request": {
-          "prompt": "prompt",
-          "timezone": "timezone",
-          "locale": "locale"
+      ],
+
+      "output": {
+        "mode": "extract",
+        "tag": "ai:chat",
+        "normalize": {
+          "interaction.type": "'chat'",
+          "interaction.input.text": "$request.prompt",
+          "interaction.input.file_uuids": "$request.file_uuids",
+          "interaction.input.has_files": "$request.has_files",
+          "interaction.output.text": "$response.content",
+          "interaction.output.thinking": "$response.thinking",
+          "interaction.output.thinking_summary": "$response.thinking_summary",
+          "interaction.model": "$response.model",
+          "interaction.message_id": "$response.message_id",
+          "interaction.has_extended_thinking": "$response.has_thinking"
         },
-        "response": {
-          "conversation_id": "uuid",
-          "conversation_name": "name",
-          "response": "chat_messages[-1].content[0].text",
-          "timestamp": "chat_messages[-1].created_at"
-        }
+        "include_raw": false
       }
     }
   },
-  "detection": {
-    "subscription": [
-      {
-        "type": "api_response",
-        "url": "**/api/organizations/*/subscription_details",
-        "extract": {
-          "status": "$.status",
-          "billing_interval": "$.billing_interval",
-          "next_charge_date": "$.next_charge_date"
-        }
-      },
-      {
-        "type": "api_response",
-        "url": "**/api/organizations/*",
-        "extract": {
-          "org_name": "$.name",
-          "org_id": "$.uuid"
-        }
+
+  "detection": [
+    {
+      "id": "subscription_details",
+      "match": { "url": "**/api/organizations/*/subscription_details" },
+      "extract": {
+        "subscription.plan": "status",
+        "subscription.billing_interval": "billing_interval",
+        "subscription.next_charge_date": "next_charge_date"
       }
-    ]
-  },
+    },
+    {
+      "id": "organization_info",
+      "match": { "url": "**/api/organizations/*" },
+      "when": "$exists(uuid) and $exists(name) and $not($contains($request.url, '/'))",
+      "extract": {
+        "org.id": "uuid",
+        "org.name": "name",
+        "org.capabilities": "capabilities",
+        "org.rate_limit_tier": "rate_limit_tier",
+        "org.billing_type": "billing_type"
+      }
+    },
+    {
+      "id": "rate_limit_headers",
+      "match": { "url": "**" },
+      "extract_from": "response_headers",
+      "when": "$exists($headers['x-ratelimit-remaining'])",
+      "extract": {
+        "rate_limit.remaining": "$headers['x-ratelimit-remaining']",
+        "rate_limit.limit": "$headers['x-ratelimit-limit']"
+      }
+    }
+  ],
+
   "pricing": {
-    "model": [
-      "subscription"
-    ],
+    "model": ["subscription"],
     "tiers": [
-      {
-        "id": "free",
-        "name": "Free",
-        "type": "free",
-        "monthly_usd": 0
-      },
-      {
-        "id": "pro",
-        "name": "Pro",
-        "type": "individual",
-        "monthly_usd": 20
-      },
-      {
-        "id": "team",
-        "name": "Team",
-        "type": "team",
-        "monthly_usd": 25
-      },
-      {
-        "id": "enterprise",
-        "name": "Enterprise",
-        "type": "enterprise",
-        "monthly_usd": null
-      }
+      { "id": "free", "name": "Free", "type": "free", "monthly_usd": 0 },
+      { "id": "pro", "name": "Pro", "type": "individual", "monthly_usd": 20 },
+      { "id": "team", "name": "Team", "type": "team", "monthly_usd": 25 },
+      { "id": "enterprise", "name": "Enterprise", "type": "enterprise", "monthly_usd": null }
     ]
-  },
-  "_status": "complete",
-  "_har_analyzed": "2026-01-13",
-  "_notes": "SSE streaming with event types: message_start, content_block_start, content_block_delta, content_block_stop, message_delta, message_limit, message_stop. Response body is base64 encoded in HAR."
+  }
 }

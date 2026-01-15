@@ -11,12 +11,14 @@ The bundle includes (all from sync-models.py generated data):
 3. Parsers for each API format (openai, anthropic, google, bedrock, cohere)
 4. Domain lookup table for provider detection
 5. Domain patterns for wildcard matching (Azure, Bedrock)
+6. App and website configs (validated against tool-config.schema.json)
 
-Output: dist/oisp-spec-bundle.json
+Output: dist/oximy-bundle.json
 
 Usage:
     python scripts/build-bundle.py
     python scripts/build-bundle.py --output ./custom-path.json
+    python scripts/build-bundle.py --skip-validation  # Skip schema validation
 """
 
 import argparse
@@ -26,9 +28,17 @@ from datetime import datetime
 from datetime import timezone
 from pathlib import Path
 
+try:
+    import jsonschema
+    JSONSCHEMA_AVAILABLE = True
+except ImportError:
+    JSONSCHEMA_AVAILABLE = False
+    print("Warning: jsonschema not installed. Run 'pip install jsonschema' for config validation.", file=sys.stderr)
+
 REGISTRY_ROOT = Path(__file__).parent.parent
 PROVIDERS_DIR = REGISTRY_ROOT / "providers"
 REGISTRY_DIR = REGISTRY_ROOT
+SCHEMAS_DIR = REGISTRY_ROOT / "schemas"
 
 
 def load_json(path: Path) -> dict:
@@ -37,7 +47,37 @@ def load_json(path: Path) -> dict:
         return json.load(f)
 
 
-def load_registry_from_folder(folder_path: Path) -> tuple[str, dict]:
+def load_schema(schema_name: str) -> dict | None:
+    """Load a JSON schema file."""
+    schema_path = SCHEMAS_DIR / schema_name
+    if not schema_path.exists():
+        print(f"Warning: Schema {schema_path} not found.", file=sys.stderr)
+        return None
+    return load_json(schema_path)
+
+
+def validate_config(config: dict, schema: dict, config_path: Path) -> list[str]:
+    """
+    Validate a config against a JSON schema.
+
+    Returns list of error messages (empty if valid).
+    """
+    if not JSONSCHEMA_AVAILABLE or schema is None:
+        return []
+
+    errors = []
+    validator = jsonschema.Draft202012Validator(schema)
+    for error in validator.iter_errors(config):
+        path = ".".join(str(p) for p in error.path) or "(root)"
+        errors.append(f"{config_path.name}: {path}: {error.message}")
+    return errors
+
+
+def load_registry_from_folder(
+    folder_path: Path,
+    schema: dict | None = None,
+    validate: bool = True,
+) -> tuple[str, dict, list[str]]:
     """
     Load registry items from a folder structure.
 
@@ -47,14 +87,20 @@ def load_registry_from_folder(folder_path: Path) -> tuple[str, dict]:
             <category>/
                 <id>.json       # Individual item files
 
+    Args:
+        folder_path: Path to the registry folder
+        schema: JSON schema to validate against (optional)
+        validate: Whether to validate configs (default True)
+
     Returns:
-        (version, items_dict)
+        (version, items_dict, errors_list)
     """
     version = "1.0.0"
     items = {}
+    all_errors = []
 
     if not folder_path.exists():
-        return version, items
+        return version, items, all_errors
 
     # Load version from _meta.json if exists
     meta_path = folder_path / "_meta.json"
@@ -71,27 +117,52 @@ def load_registry_from_folder(folder_path: Path) -> tuple[str, dict]:
             item_id = item_file.stem  # filename without .json
             try:
                 item_data = load_json(item_file)
+
+                # Validate against schema if provided
+                if validate and schema:
+                    errors = validate_config(item_data, schema, item_file)
+                    if errors:
+                        all_errors.extend(errors)
+
                 items[item_id] = item_data
             except Exception as e:
-                print(f"Warning: Failed to load {item_file}: {e}", file=sys.stderr)
+                all_errors.append(f"{item_file}: Failed to load: {e}")
 
-    return version, items
+    return version, items, all_errors
 
 
-def load_registry() -> dict:
-    """Load app and website registries from folder structure."""
+def load_registry(validate: bool = True) -> tuple[dict, list[str]]:
+    """
+    Load app and website registries from folder structure.
+
+    Args:
+        validate: Whether to validate configs against schema
+
+    Returns:
+        (registry_dict, errors_list)
+    """
     result = {"version": "1.0.0", "apps": {}, "websites": {}}
+    all_errors = []
+
+    # Load schema for validation
+    schema = load_schema("tool-config.schema.json") if validate else None
 
     # Load apps from apps/ folder
-    apps_version, apps = load_registry_from_folder(REGISTRY_DIR / "apps")
+    apps_version, apps, app_errors = load_registry_from_folder(
+        REGISTRY_DIR / "apps", schema=schema, validate=validate
+    )
     result["version"] = apps_version
     result["apps"] = apps
+    all_errors.extend(app_errors)
 
     # Load websites from websites/ folder
-    _, websites = load_registry_from_folder(REGISTRY_DIR / "websites")
+    _, websites, website_errors = load_registry_from_folder(
+        REGISTRY_DIR / "websites", schema=schema, validate=validate
+    )
     result["websites"] = websites
+    all_errors.extend(website_errors)
 
-    return result
+    return result, all_errors
 
 
 def load_models() -> dict:
@@ -106,15 +177,23 @@ def load_models() -> dict:
     return load_json(models_path)
 
 
-def build_bundle() -> dict:
-    """Build the complete spec bundle from generated models.json."""
+def build_bundle(validate: bool = True) -> tuple[dict, list[str]]:
+    """
+    Build the complete spec bundle from generated models.json.
+
+    Args:
+        validate: Whether to validate configs against schema
+
+    Returns:
+        (bundle_dict, errors_list)
+    """
     models_data = load_models()
-    registry_data = load_registry()
+    registry_data, validation_errors = load_registry(validate=validate)
 
     bundle = {
         "$schema": "https://oisp.dev/schema/v0.1/bundle.schema.json",
         "version": models_data.get("version", "0.1"),
-        "bundle_version": "2.1.0",  # Includes registry (apps + websites)
+        "bundle_version": "2.2.0",  # New format with pipeline-based configs
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "source": "oisp-spec",
         "source_url": models_data.get("source_url", "https://models.dev/api.json"),
@@ -140,7 +219,7 @@ def build_bundle() -> dict:
         },
     }
 
-    return bundle
+    return bundle, validation_errors
 
 
 def main():
@@ -152,11 +231,31 @@ def main():
         help="Output path for bundle",
     )
     parser.add_argument("--minify", action="store_true", help="Minify JSON output")
+    parser.add_argument(
+        "--skip-validation",
+        action="store_true",
+        help="Skip schema validation of configs",
+    )
     args = parser.parse_args()
 
     # Build bundle
     print("Building OISP Spec Bundle...")
-    bundle = build_bundle()
+    validate = not args.skip_validation
+    bundle, validation_errors = build_bundle(validate=validate)
+
+    # Report validation errors
+    if validation_errors:
+        print("\n" + "=" * 60, file=sys.stderr)
+        print("VALIDATION ERRORS:", file=sys.stderr)
+        print("=" * 60, file=sys.stderr)
+        for error in validation_errors:
+            print(f"  ERROR: {error}", file=sys.stderr)
+        print("=" * 60, file=sys.stderr)
+        print(f"\n{len(validation_errors)} validation error(s) found.", file=sys.stderr)
+        print("Fix the errors above or use --skip-validation to proceed anyway.", file=sys.stderr)
+        sys.exit(1)
+    elif validate and JSONSCHEMA_AVAILABLE:
+        print("All configs validated successfully against tool-config.schema.json")
 
     # Create output directory
     args.output.parent.mkdir(parents=True, exist_ok=True)
@@ -169,7 +268,7 @@ def main():
     # Print stats
     stats = bundle.get("stats", {})
     registry = bundle.get("registry", {})
-    print(f"Bundle written to: {args.output}")
+    print(f"\nBundle written to: {args.output}")
     print(f"  Version: {bundle['bundle_version']}")
     print(f"  Providers: {stats.get('providers', len(bundle['providers']))}")
     print(f"  Models: {stats.get('total_models', len(bundle['models']))}")

@@ -1,0 +1,465 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "oximy/tool-config/2.0",
+  "title": "Oximy Tool Configuration Schema",
+  "description": "Configuration schema for AI tool detection and parsing",
+
+  "type": "object",
+  "required": ["id", "name", "vendor", "category", "source_type"],
+
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Schema version reference"
+    },
+
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$",
+      "description": "Unique lowercase identifier for the tool"
+    },
+
+    "name": {
+      "type": "string",
+      "description": "Human-readable display name"
+    },
+
+    "vendor": {
+      "type": "string",
+      "description": "Company or organization name"
+    },
+
+    "vendor_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Official vendor website"
+    },
+
+    "category": {
+      "type": "string",
+      "enum": ["ai-chat", "coding", "image", "voice", "productivity", "search", "analytics", "writing", "agent", "browser", "design", "other"],
+      "description": "Primary tool category"
+    },
+
+    "source_type": {
+      "type": "string",
+      "enum": ["app", "website", "cli"],
+      "description": "How this tool runs: native app, website in browser, or CLI in terminal"
+    },
+
+    "domains": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "WEBSITE ONLY: Dashboard/UI domains matched via referer/origin headers"
+    },
+
+    "api_domains": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "APP ONLY: API endpoint domains matched via request URL"
+    },
+
+    "signatures": {
+      "type": "object",
+      "description": "APP/CLI: Platform-specific signatures for identification",
+      "properties": {
+        "macos": {
+          "type": "object",
+          "properties": {
+            "bundle_id": { "type": "string", "description": "macOS bundle identifier (e.g., com.anthropic.claudefordesktop)" },
+            "team_id": { "type": "string", "description": "Apple Developer Team ID" }
+          },
+          "required": ["bundle_id"]
+        },
+        "windows": {
+          "type": "object",
+          "properties": {
+            "exe_name": { "type": "string", "description": "Windows executable name" },
+            "publisher": { "type": "string", "description": "Windows publisher name" }
+          }
+        },
+        "linux": {
+          "type": "object",
+          "properties": {
+            "binary_name": { "type": "string" },
+            "desktop_file": { "type": "string" }
+          }
+        },
+        "cli": {
+          "type": "object",
+          "description": "CLI tool identification (runs inside Terminal/shell wrappers)",
+          "properties": {
+            "binary_names": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Executable names to match in process tree (e.g., ['claude', 'claude-code'])"
+            },
+            "path_patterns": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Glob patterns for executable paths (e.g., ['**/bin/claude', '**/.npm/**/claude'])"
+            },
+            "env_markers": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Environment variables that indicate this tool (e.g., ['CLAUDE_CODE_VERSION'])"
+            }
+          }
+        }
+      }
+    },
+
+    "icon": {
+      "type": "string",
+      "description": "APP ONLY: Icon filename (e.g., claude.png)"
+    },
+
+    "meta": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Arbitrary key-value metadata for tool-specific data"
+    },
+
+    "features": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/feature" },
+      "description": "Map of feature_key to feature configuration"
+    },
+
+    "detection": {
+      "type": "array",
+      "description": "Sources for extracting metadata (subscription, user, org, rate limits, etc.). Uses flexible key paths like 'subscription.plan', 'user.email', 'org.id'",
+      "items": { "$ref": "#/$defs/detection_source" }
+    },
+
+    "pricing": {
+      "type": "object",
+      "properties": {
+        "model": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["free", "subscription", "usage", "hybrid"] }
+        },
+        "tiers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "name": { "type": "string" },
+              "type": { "type": "string", "enum": ["free", "individual", "team", "enterprise"] },
+              "monthly_usd": { "type": ["number", "null"] }
+            }
+          }
+        }
+      }
+    }
+  },
+
+  "allOf": [
+    {
+      "if": {
+        "properties": { "source_type": { "const": "website" } },
+        "required": ["source_type"]
+      },
+      "then": { "required": ["domains"] }
+    },
+    {
+      "if": {
+        "properties": { "source_type": { "const": "app" } },
+        "required": ["source_type", "features"]
+      },
+      "then": { "required": ["api_domains", "signatures"] }
+    },
+    {
+      "if": {
+        "allOf": [
+          {
+            "properties": { "source_type": { "const": "app" } },
+            "required": ["source_type"]
+          },
+          { "not": { "required": ["features"] } }
+        ]
+      },
+      "then": { "required": ["signatures"] }
+    },
+    {
+      "if": {
+        "properties": { "source_type": { "const": "cli" } },
+        "required": ["source_type"]
+      },
+      "then": { "required": ["api_domains", "signatures"] }
+    }
+  ],
+
+  "$defs": {
+    "feature": {
+      "type": "object",
+      "required": ["type", "endpoints", "output"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["chat", "codegen", "asset_creation", "text_manipulation", "platform_output", "other"],
+          "description": "Type of AI interaction"
+        },
+        "name": {
+          "type": "string",
+          "description": "Human-readable feature name"
+        },
+        "description": {
+          "type": "string",
+          "description": "What this feature does"
+        },
+        "endpoints": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/endpoint" },
+          "description": "Endpoints to capture for this feature"
+        },
+        "output": {
+          "$ref": "#/$defs/output",
+          "description": "How to output captured data"
+        }
+      }
+    },
+
+    "endpoint": {
+      "type": "object",
+      "required": ["role", "match"],
+      "properties": {
+        "role": {
+          "type": "string",
+          "enum": ["request", "response", "both", "detect"],
+          "description": "What this endpoint captures"
+        },
+        "match": {
+          "$ref": "#/$defs/match",
+          "description": "How to match this endpoint"
+        },
+        "pipeline": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/pipeline_op" },
+          "description": "Processing pipeline for the data"
+        },
+        "extract": {
+          "$ref": "#/$defs/extract_map",
+          "description": "Fields to extract (JSONata expressions)"
+        },
+        "correlate": {
+          "$ref": "#/$defs/correlate",
+          "description": "How to correlate with other endpoints"
+        }
+      }
+    },
+
+    "match": {
+      "type": "object",
+      "required": ["url"],
+      "properties": {
+        "url": {
+          "type": "string",
+          "description": "Glob pattern for URL matching (e.g., **/api/chat/*)"
+        },
+        "method": {
+          "type": "string",
+          "enum": ["GET", "POST", "PUT", "DELETE", "PATCH", "WS", "*"],
+          "description": "HTTP method or WS for WebSocket"
+        },
+        "query": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "Required query parameters"
+        },
+        "headers": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "Required headers"
+        }
+      }
+    },
+
+    "pipeline_op": {
+      "type": "object",
+      "required": ["op"],
+      "properties": {
+        "op": {
+          "type": "string",
+          "enum": ["decode", "parse", "stream", "accumulate", "branch", "transform", "extract_headers", "extract_auth"],
+          "description": "Pipeline operation type"
+        },
+        "apply_to": {
+          "type": "string",
+          "enum": ["request", "response", "both"],
+          "description": "Which part of the transaction to apply to"
+        },
+
+        "encoding": {
+          "type": "string",
+          "enum": ["base64", "base64url", "gzip", "deflate", "br", "zstd", "hex"],
+          "description": "For decode op: encoding type"
+        },
+
+        "format": {
+          "type": "string",
+          "enum": ["json", "xml", "protobuf", "msgpack", "yaml", "form", "multipart", "graphql", "jwt"],
+          "description": "For parse op: format type (jwt for decoding JWT tokens)"
+        },
+        "schema": {
+          "type": "string",
+          "description": "For parse op: schema file reference (protobuf, etc.)"
+        },
+        "nested_parse": {
+          "type": "string",
+          "description": "For parse op: JSONata path to a string field that should be parsed as JSON again (for double-encoded JSON like Google's batchexecute format)"
+        },
+
+        "transport": {
+          "type": "string",
+          "enum": ["sse", "ndjson", "websocket", "chunked", "grpc-stream"],
+          "description": "For stream op: transport type"
+        },
+        "options": {
+          "type": "object",
+          "description": "Transport-specific options",
+          "properties": {
+            "prefixes": { "type": "array", "items": { "type": "string" }, "description": "Prefixes to strip from each line/chunk (e.g., ['data: '] for SSE)" },
+            "skip": { "type": "array", "items": { "type": "string" }, "description": "Lines/values to skip entirely (e.g., ['[DONE]'])" },
+            "delimiter": { "type": "string", "description": "Chunk delimiter (default: newline)" },
+            "end_signal": { "type": "string", "description": "Signal that indicates end of stream" },
+            "prefix_strip": { "type": "string", "description": "One-time prefix to strip from start of entire response (e.g., \")]}'\" for Google's anti-XSSI)" },
+            "chunk_format": {
+              "type": "string",
+              "enum": ["line", "length_prefixed"],
+              "description": "How chunks are delimited: 'line' (default, split by delimiter) or 'length_prefixed' (each chunk preceded by byte count)"
+            }
+          }
+        },
+
+        "rules": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "when": { "type": "string", "description": "JSONata condition" },
+              "set": { "$ref": "#/$defs/extract_map" }
+            }
+          },
+          "description": "For accumulate op: conditional extraction rules"
+        },
+        "fields": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "from": { "type": "string" },
+              "method": { "type": "string", "enum": ["concat", "first", "last", "sum", "append", "merge"] }
+            }
+          },
+          "description": "For accumulate op: field accumulation methods"
+        },
+
+        "on": {
+          "type": "string",
+          "description": "For branch op: what to branch on"
+        },
+        "cases": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/extract_map" },
+          "description": "For branch op: case conditions and extractions"
+        }
+      }
+    },
+
+    "extract_map": {
+      "type": "object",
+      "additionalProperties": { "type": "string" },
+      "description": "Map of field names to JSONata expressions"
+    },
+
+    "correlate": {
+      "type": "object",
+      "properties": {
+        "by": {
+          "type": "string",
+          "enum": ["field", "url_segment", "timing", "same_connection"],
+          "description": "Correlation strategy"
+        },
+        "field": {
+          "type": "object",
+          "properties": {
+            "this": { "type": "string" },
+            "other": { "type": "string" }
+          },
+          "description": "For field correlation: JSONata paths"
+        },
+        "segment": {
+          "type": "integer",
+          "description": "For url_segment: which segment (-1 for last)"
+        },
+        "window_ms": {
+          "type": "integer",
+          "description": "For timing: correlation window in milliseconds"
+        }
+      }
+    },
+
+    "output": {
+      "type": "object",
+      "required": ["mode"],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["detect", "extract", "both"],
+          "description": "Output mode"
+        },
+        "tag": {
+          "type": "string",
+          "description": "Tag for detect mode (e.g., 'ai:image_input')"
+        },
+        "normalize": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "Map to normalized output schema"
+        },
+        "include_raw": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether to include _raw in output"
+        }
+      }
+    },
+
+    "detection_source": {
+      "type": "object",
+      "required": ["match", "extract"],
+      "description": "A source for extracting metadata from requests/responses",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Optional identifier for this detection source"
+        },
+        "match": {
+          "$ref": "#/$defs/match",
+          "description": "How to match requests/responses for this source"
+        },
+        "extract_from": {
+          "type": "string",
+          "enum": ["response_body", "request_body", "response_headers", "request_headers"],
+          "default": "response_body",
+          "description": "Where to extract data from"
+        },
+        "pipeline": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/pipeline_op" },
+          "description": "Processing pipeline (decode, parse JWT, etc.)"
+        },
+        "when": {
+          "type": "string",
+          "description": "JSONata condition - only extract if this evaluates to true (for opportunistic capture)"
+        },
+        "extract": {
+          "$ref": "#/$defs/extract_map",
+          "description": "Fields to extract using flexible key paths (e.g., 'subscription.plan', 'user.id', 'rate_limit.remaining')"
+        }
+      }
+    }
+  }
+}

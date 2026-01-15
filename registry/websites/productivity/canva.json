@@ -1,0 +1,111 @@
+{
+  "$schema": "../schemas/tool-config.schema.json",
+
+  "id": "canva",
+  "name": "Canva",
+  "vendor": "Canva",
+  "vendor_url": "https://www.canva.com",
+  "category": "productivity",
+
+  "source_type": "website",
+
+  "domains": [
+    "canva.com",
+    "www.canva.com"
+  ],
+
+  "meta": {
+    "docs_url": "https://www.canva.com/help",
+    "notes": "Canva uses an AI assistant for design generation. The flow involves intent classification, thread creation with the user's prompt, and polling for generated designs. Responses are base64-encoded with an anti-XSSI prefix ')]}'while(1);</x>//'."
+  },
+
+  "features": {
+    "platform_creation": {
+      "type": "platform_output",
+      "name": "Design Generation",
+      "description": "AI-powered design generation from user prompts. Detects when Canva AI creates invitation, presentation, or other design templates.",
+
+      "endpoints": [
+        {
+          "role": "request",
+          "match": {
+            "url": "**/_ajax/assistant/threads",
+            "method": "POST"
+          },
+          "pipeline": [
+            { "op": "parse", "format": "json", "apply_to": "request" },
+            { "op": "decode", "encoding": "base64", "apply_to": "response" },
+            { "op": "parse", "format": "json", "apply_to": "response", "prefix_strip": "//" }
+          ],
+          "extract": {
+            "request.prompt": "B[0].A",
+            "request.session_id": "C",
+            "response.thread_id": "A"
+          }
+        },
+        {
+          "role": "response",
+          "match": {
+            "url": "**/_ajax/assistant/threads/*",
+            "method": "GET",
+            "query": { "afterMessageSeq": "*" }
+          },
+          "pipeline": [
+            { "op": "decode", "encoding": "base64", "apply_to": "response" },
+            { "op": "parse", "format": "json", "apply_to": "response", "prefix_strip": "//" }
+          ],
+          "extract": {
+            "response.designs": "A[*].A.Q.Q[*].B",
+            "response.design_ids": "A[*].A.Q.Q[*].A",
+            "response.thumbnails": "A[*].A.Q.Q[*].K",
+            "response.brand_id": "H",
+            "response.user_id": "I"
+          },
+          "correlate": {
+            "by": "url_segment",
+            "segment": -1
+          }
+        }
+      ],
+
+      "output": {
+        "mode": "detect",
+        "tag": "ai:platform_creation",
+        "normalize": {
+          "interaction.type": "'platform_creation'",
+          "interaction.input.text": "$request.prompt",
+          "interaction.output.design_titles": "$response.designs",
+          "interaction.output.design_ids": "$response.design_ids",
+          "interaction.thread_id": "$response.thread_id"
+        },
+        "include_raw": false
+      }
+    }
+  },
+
+  "detection": [
+    {
+      "id": "user_profile",
+      "match": { "url": "**/_ajax/profile/v2/brands/*/members*", "method": "GET" },
+      "pipeline": [
+        { "op": "decode", "encoding": "base64" },
+        { "op": "parse", "format": "json" }
+      ],
+      "when": "$exists(members[0].user.email)",
+      "extract": {
+        "user.email": "members[0].user.email",
+        "user.display_name": "members[0].user.displayName"
+      }
+    }
+  ],
+
+  "pricing": {
+    "model": ["free", "subscription"],
+    "tiers": [
+      { "id": "free", "name": "Canva Free", "type": "free", "monthly_usd": 0 },
+      { "id": "pro", "name": "Canva Pro", "type": "individual", "monthly_usd": 15 },
+      { "id": "teams", "name": "Canva for Teams", "type": "team", "monthly_usd": 10 },
+      { "id": "enterprise", "name": "Canva Enterprise", "type": "enterprise", "monthly_usd": null }
+    ]
+  }
+}

@@ -1,89 +1,200 @@
 {
+  "$schema": "../schemas/tool-config.schema.json",
+
+  "id": "granola",
   "name": "Granola",
-  "vendor": "Granola",
+  "vendor": "Granola Labs",
   "vendor_url": "https://granola.ai",
   "category": "productivity",
-  "platforms": [
-    "macos"
+
+  "source_type": "app",
+
+  "api_domains": [
+    "api.granola.ai",
+    "stream.api.granola.ai"
   ],
+
   "signatures": {
     "macos": {
       "bundle_id": "com.granola.app",
       "team_id": "QZ7DHHLN25"
     }
   },
-  "ai": "native",
+
   "icon": "granola.png",
-  "api_domains": [
-    "stream.api.granola.ai",
-    "api.granola.ai",
-    "*.granola.ai"
-  ],
+
+  "meta": {
+    "description": "AI-powered meeting notes and assistant"
+  },
+
   "features": {
-    "chat": {
+    "global_chat": {
       "type": "chat",
-      "name": "AI Chat with Documents",
-      "description": "Chat with your meeting notes and documents using AI",
-      "patterns": [
+      "name": "Global Chat",
+      "description": "Multi-turn chat across all meetings with reasoning and citations",
+
+      "endpoints": [
         {
-          "url": "**/v1/chat-with-documents",
-          "method": "POST"
-        }
-      ],
-      "parser": {
-        "request": {
-          "prompt": "chat_history[-1].text",
-          "model": "prompt_config.model",
-          "context": "document_ids"
-        },
-        "response": {
-          "stream": {
-            "format": "ndjson",
-            "format_options": {
-              "delimiter": "-----CHUNK_BOUNDARY-----"
-            },
-            "rules": [
-              {
-                "when": "$exists(outputs) and $exists(outputs[type = 'text_with_citations'].plain_text)",
-                "extract": {
-                  "content": "outputs[type = 'text_with_citations'].plain_text"
-                }
-              },
-              {
-                "when": "$exists(outputs) and $exists(outputs[type = 'reasoning'].text)",
-                "extract": {
-                  "reasoning": "outputs[type = 'reasoning'].text"
-                }
-              }
-            ],
-            "accumulate": {
-              "content": {
-                "from": "content",
-                "op": "last"
-              },
-              "reasoning": {
-                "from": "reasoning",
-                "op": "last"
+          "role": "both",
+          "match": {
+            "url": "**/v1/chat-with-documents",
+            "method": "POST"
+          },
+          "pipeline": [
+            { "op": "parse", "format": "json", "apply_to": "request" },
+            {
+              "op": "stream",
+              "transport": "chunked",
+              "apply_to": "response",
+              "options": {
+                "delimiter": "-----CHUNK_BOUNDARY-----"
               }
             },
-            "finalize": {
-              "content": "accumulated.content"
+            {
+              "op": "accumulate",
+              "apply_to": "response",
+              "rules": [
+                { "when": "outputs[0].type = 'reasoning'", "set": { "reasoning": "outputs[0].text" } },
+                { "when": "outputs[0].type = 'text'", "set": { "content": "outputs[0].text" } },
+                { "when": "$exists(response.response_lines)", "set": { "content": "$join(response.response_lines.answer_text, '\\n')" } }
+              ],
+              "fields": {
+                "reasoning": { "from": "reasoning", "method": "last" },
+                "content": { "from": "content", "method": "last" }
+              }
             }
+          ],
+          "extract": {
+            "request.prompt": "chat_history[-1].text",
+            "request.chat_context": "chat_context",
+            "request.model": "prompt_config.model",
+            "request.num_documents": "num_total_documents",
+            "response.content": "$accumulated.content",
+            "response.reasoning": "$accumulated.reasoning"
           }
         }
+      ],
+
+      "output": {
+        "mode": "extract",
+        "tag": "ai:chat",
+        "normalize": {
+          "interaction.type": "'chat'",
+          "interaction.input.text": "$request.prompt",
+          "interaction.input.context": "$request.chat_context",
+          "interaction.input.num_documents": "$request.num_documents",
+          "interaction.output.text": "$response.content",
+          "interaction.output.reasoning": "$response.reasoning",
+          "interaction.model": "$request.model"
+        },
+        "include_raw": false
+      }
+    },
+
+    "meeting_summary": {
+      "type": "text_manipulation",
+      "name": "Meeting Summary Generation",
+      "description": "Generate structured meeting notes from transcript using templates",
+
+      "endpoints": [
+        {
+          "role": "both",
+          "match": {
+            "url": "**/v1/llm-proxy-stream",
+            "method": "POST"
+          },
+          "pipeline": [
+            { "op": "parse", "format": "json", "apply_to": "request" },
+            {
+              "op": "stream",
+              "transport": "chunked",
+              "apply_to": "response",
+              "options": {
+                "delimiter": "-----CHUNK_BOUNDARY-----"
+              }
+            },
+            {
+              "op": "accumulate",
+              "apply_to": "response",
+              "rules": [
+                { "when": "$exists(choices[0].delta.content)", "set": { "content": "choices[0].delta.content" } },
+                { "when": "$exists(usage)", "set": { "prompt_tokens": "usage.prompt_tokens", "completion_tokens": "usage.completion_tokens" } }
+              ],
+              "fields": {
+                "content": { "from": "content", "method": "concat" },
+                "prompt_tokens": { "from": "prompt_tokens", "method": "last" },
+                "completion_tokens": { "from": "completion_tokens", "method": "last" }
+              }
+            }
+          ],
+          "extract": {
+            "request.prompt_slug": "prompt_slug",
+            "request.template_title": "prompt_variables.template_title",
+            "request.calendar_event_title": "prompt_variables.calendar_event_title",
+            "request.document_id": "prompt_variables.document_id",
+            "response.content": "$accumulated.content",
+            "response.prompt_tokens": "$accumulated.prompt_tokens",
+            "response.completion_tokens": "$accumulated.completion_tokens"
+          }
+        }
+      ],
+
+      "output": {
+        "mode": "extract",
+        "tag": "ai:summary",
+        "normalize": {
+          "interaction.type": "'summary'",
+          "interaction.input.prompt_slug": "$request.prompt_slug",
+          "interaction.input.template": "$request.template_title",
+          "interaction.input.meeting_title": "$request.calendar_event_title",
+          "interaction.input.document_id": "$request.document_id",
+          "interaction.output.text": "$response.content",
+          "interaction.usage.prompt_tokens": "$response.prompt_tokens",
+          "interaction.usage.completion_tokens": "$response.completion_tokens"
+        },
+        "include_raw": false
       }
     }
   },
-  "detection": {
-    "subscription": [
-      {
-        "type": "api_response",
-        "url": "**/v1/get-workspaces",
-        "extract": {
-          "plan_type": "$.workspaces[0].plan_type",
-          "role": "$.workspaces[0].role"
-        }
+
+  "detection": [
+    {
+      "id": "subscription",
+      "match": { "url": "**/v1/get-current-subscription", "method": "POST" },
+      "extract": {
+        "subscription.plan_id": "active_plan_id",
+        "subscription.status": "status"
       }
+    },
+    {
+      "id": "workspace",
+      "match": { "url": "**/v1/get-workspaces", "method": "POST" },
+      "when": "$exists(workspaces[0])",
+      "extract": {
+        "workspace.id": "workspaces[0].workspace.workspace_id",
+        "workspace.name": "workspaces[0].workspace.display_name",
+        "workspace.slug": "workspaces[0].workspace.slug"
+      }
+    },
+    {
+      "id": "user_info",
+      "match": { "url": "**/v1/get-workspace-members", "method": "POST" },
+      "when": "$exists(members[0])",
+      "extract": {
+        "user.id": "members[0].user_id",
+        "user.email": "members[0].email",
+        "user.name": "members[0].name",
+        "user.role": "members[0].role"
+      }
+    }
+  ],
+
+  "pricing": {
+    "model": ["subscription"],
+    "tiers": [
+      { "id": "free-trial", "name": "Free Trial", "type": "free", "monthly_usd": 0 },
+      { "id": "pro", "name": "Pro", "type": "individual", "monthly_usd": null },
+      { "id": "team", "name": "Team", "type": "team", "monthly_usd": null }
     ]
   }
 }

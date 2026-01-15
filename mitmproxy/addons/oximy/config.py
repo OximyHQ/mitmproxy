@@ -35,7 +35,7 @@ _PROD_DEFAULTS: dict[str, Any] = {
     "API_URL": "https://api.oximy.com/api/v1",
     "AUTO_PROXY_ENABLED": False,  # Production: proxy managed externally
     "PROXY_HOST": "127.0.0.1",
-    "PROXY_PORT": "8088",
+    "PROXY_PORT": "8080",  # Match mitmproxy default
 }
 
 # Dev overrides (applied when DEV_MODE=true)

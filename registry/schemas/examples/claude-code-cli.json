@@ -1,0 +1,166 @@
+{
+  "$schema": "../tool-config.schema.json",
+
+  "id": "claude-code",
+  "name": "Claude Code",
+  "vendor": "Anthropic",
+  "vendor_url": "https://anthropic.com",
+  "category": "coding",
+
+  "source_type": "cli",
+
+  "api_domains": [
+    "api.anthropic.com",
+    "a-api.anthropic.com"
+  ],
+
+  "signatures": {
+    "cli": {
+      "binary_names": ["claude"],
+      "path_patterns": [
+        "**/node_modules/.bin/claude",
+        "**/bin/claude",
+        "**/@anthropic-ai/claude-code/**/claude"
+      ],
+      "env_markers": ["CLAUDE_CODE_ENTRY"]
+    }
+  },
+
+  "wrapper_hosts": [
+    "Terminal",
+    "iTerm2",
+    "Warp",
+    "Alacritty",
+    "kitty",
+    "Hyper",
+    "Code",
+    "Cursor",
+    "zed"
+  ],
+
+  "meta": {
+    "docs_url": "https://docs.anthropic.com/claude-code",
+    "npm_package": "@anthropic-ai/claude-code"
+  },
+
+  "features": {
+    "chat": {
+      "type": "chat",
+      "name": "Code Assistance",
+      "description": "Interactive coding assistance via Claude Code CLI",
+
+      "endpoints": [
+        {
+          "role": "both",
+          "match": {
+            "url": "**/v1/messages",
+            "method": "POST"
+          },
+          "pipeline": [
+            { "op": "parse", "format": "json", "apply_to": "request" },
+            {
+              "op": "stream",
+              "transport": "sse",
+              "apply_to": "response",
+              "options": {
+                "prefixes": ["data: "],
+                "skip": ["[DONE]"]
+              }
+            },
+            {
+              "op": "accumulate",
+              "apply_to": "response",
+              "rules": [
+                { "when": "type = 'message_start'", "set": { "model": "message.model" } },
+                { "when": "type = 'content_block_delta' and delta.type = 'text_delta'", "set": { "content": "delta.text" } },
+                { "when": "type = 'content_block_delta' and delta.type = 'thinking_delta'", "set": { "thinking": "delta.thinking" } },
+                { "when": "type = 'message_delta'", "set": { "stop_reason": "delta.stop_reason" } }
+              ],
+              "fields": {
+                "content": { "from": "content", "method": "concat" },
+                "thinking": { "from": "thinking", "method": "concat" },
+                "model": { "from": "model", "method": "first" },
+                "stop_reason": { "from": "stop_reason", "method": "last" }
+              }
+            }
+          ],
+          "extract": {
+            "request.prompt": "messages[-1].content",
+            "request.system": "system",
+            "request.model": "model",
+            "response.content": "$accumulated.content",
+            "response.thinking": "$accumulated.thinking",
+            "response.model": "$accumulated.model"
+          }
+        }
+      ],
+
+      "output": {
+        "mode": "extract",
+        "normalize": {
+          "interaction.type": "'chat'",
+          "interaction.input.text": "$request.prompt",
+          "interaction.input.context": "$request.system",
+          "interaction.output.text": "$response.content",
+          "interaction.output.thinking": "$response.thinking",
+          "interaction.model": "$response.model"
+        },
+        "include_raw": true
+      }
+    },
+
+    "tool_use": {
+      "type": "action",
+      "name": "Tool Execution",
+      "description": "Claude Code executing tools (file read, write, bash, etc.)",
+
+      "endpoints": [
+        {
+          "role": "detect",
+          "match": {
+            "url": "**/v1/messages",
+            "method": "POST",
+            "headers": {
+              "content-type": "application/json"
+            }
+          }
+        }
+      ],
+
+      "output": {
+        "mode": "detect",
+        "tag": "ai:tool_use"
+      }
+    }
+  },
+
+  "detection": [
+    {
+      "id": "rate_limit_headers",
+      "match": { "url": "**/v1/messages" },
+      "extract_from": "response_headers",
+      "when": "$exists($headers['x-ratelimit-remaining'])",
+      "extract": {
+        "rate_limit.remaining": "$headers['x-ratelimit-remaining']",
+        "rate_limit.limit": "$headers['x-ratelimit-limit']",
+        "rate_limit.reset": "$headers['x-ratelimit-reset']"
+      }
+    },
+    {
+      "id": "usage_from_response",
+      "match": { "url": "**/v1/messages" },
+      "when": "$exists(usage)",
+      "extract": {
+        "usage.input_tokens": "usage.input_tokens",
+        "usage.output_tokens": "usage.output_tokens"
+      }
+    }
+  ],
+
+  "pricing": {
+    "model": ["usage"],
+    "tiers": [
+      { "id": "api", "name": "API Usage", "type": "individual", "monthly_usd": null }
+    ]
+  }
+}

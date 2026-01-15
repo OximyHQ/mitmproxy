@@ -15,14 +15,43 @@ from typing import IO
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from mitmproxy.addons.oximy.models import OximyEvent
+    from mitmproxy.addons.oximy.models import TraceOutput
 
 logger = logging.getLogger(__name__)
+
+# Try to import schema validator
+try:
+    from mitmproxy.addons.oximy.schema_validator import (
+        validate_event as _validate_event,
+    )
+
+    VALIDATION_AVAILABLE = True
+except ImportError:
+    _validate_event = None  # type: ignore
+    VALIDATION_AVAILABLE = False
+
+
+def validate_event(event: dict, event_id: str | None = None):  # type: ignore
+    """Wrapper for schema validation."""
+    if _validate_event is not None:
+        return _validate_event(event, event_id)
+    # Return a mock result if validation not available
+    from dataclasses import dataclass
+
+    @dataclass
+    class MockResult:
+        valid: bool = True
+        errors: list = None  # type: ignore
+
+        def __post_init__(self):
+            self.errors = self.errors or []
+
+    return MockResult()
 
 
 class EventWriter:
     """
-    Writes OximyEvents to rotating JSONL files.
+    Writes TraceOutput events to rotating JSONL files.
 
     Files are rotated daily with naming pattern: traces_YYYY-MM-DD.jsonl
 
@@ -35,31 +64,45 @@ class EventWriter:
         output_dir: Path | str,
         filename_pattern: str = "traces_{date}.jsonl",
         test_mode: bool = False,
+        validate: bool = False,
     ):
         """
         Args:
             output_dir: Directory for output files
             filename_pattern: Filename pattern with {date} placeholder
             test_mode: If True, write pretty JSON to test_trace.json (overwrites)
+            validate: If True, validate events against trace-output.schema.json
         """
         self.output_dir = Path(output_dir).expanduser()
         self.filename_pattern = filename_pattern
         self.test_mode = test_mode
+        self.validate = validate and VALIDATION_AVAILABLE
         self._current_file: Path | None = None
         self._fo: IO[str] | None = None
         self._event_count: int = 0
+        self._validation_errors: int = 0
         self._test_events: list = []  # Buffer for test mode
 
-    def write(self, event: OximyEvent) -> None:
+    def write(self, event: TraceOutput) -> None:
         """
         Write an event to the current JSONL file.
 
         Rotates to a new file if the date has changed.
         In test mode, buffers events and writes pretty JSON on close.
         """
+        event_dict = event.to_dict()
+
+        # Validate if enabled
+        if self.validate:
+            result = validate_event(event_dict, event_dict.get("event_id"))
+            if not result.valid:
+                self._validation_errors += 1
+                for error in result.errors:
+                    logger.warning(f"Event validation error: {error}")
+
         if self.test_mode:
             # Test mode: buffer events and write pretty JSON
-            self._test_events.append(event.to_dict())
+            self._test_events.append(event_dict)
             self._event_count += 1
             self._write_test_file()
             logger.info(f"Test mode: captured event #{self._event_count}")
@@ -73,7 +116,7 @@ class EventWriter:
 
         try:
             # Serialize and write (line-buffered mode flushes after each \n)
-            line = json.dumps(event.to_dict(), separators=(",", ":"))
+            line = json.dumps(event_dict, separators=(",", ":"))
             self._fo.write(line + "\n")
             self._event_count += 1
 

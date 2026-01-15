@@ -1,104 +1,218 @@
 {
+  "$schema": "../schemas/tool-config.schema.json",
+
+  "id": "gemini",
   "name": "Gemini",
   "vendor": "Google",
-  "vendor_url": "https://google.com",
+  "vendor_url": "https://gemini.google.com",
   "category": "ai-chat",
-  "api_domains": [
+
+  "source_type": "website",
+
+  "domains": [
     "gemini.google.com"
   ],
+
+  "meta": {
+    "docs_url": "https://support.google.com/gemini"
+  },
+
   "features": {
     "chat": {
       "type": "chat",
-      "name": "Chat Conversation",
-      "patterns": [
+      "name": "Chat",
+      "description": "Chat with Gemini. Uses Google's batchexecute streaming format with cumulative response chunks.",
+
+      "endpoints": [
         {
-          "url": "**/_/BardChatUi/data/assistant.lamda.BardFrontendService/StreamGenerate",
-          "method": "POST"
-        }
-      ],
-      "parser": {
-        "request": {
-          "encoding": "form",
-          "form_field": "f.req",
-          "preprocess": [
+          "role": "both",
+          "match": {
+            "url": "**/BardChatUi/data/assistant.lamda.BardFrontendService/StreamGenerate",
+            "method": "POST"
+          },
+          "pipeline": [
+            { "op": "parse", "format": "form", "apply_to": "request" },
+            { "op": "decode", "encoding": "base64", "apply_to": "response" },
             {
-              "op": "json_parse"
+              "op": "stream",
+              "transport": "chunked",
+              "apply_to": "response",
+              "options": {
+                "prefix_strip": ")]}'",
+                "chunk_format": "length_prefixed"
+              }
             },
             {
-              "op": "index",
-              "value": 1
+              "op": "parse",
+              "format": "json",
+              "apply_to": "response",
+              "nested_parse": "[0][2]"
             },
             {
-              "op": "json_parse"
+              "op": "accumulate",
+              "apply_to": "response",
+              "rules": [
+                { "when": "$exists([4][0][1])", "set": { "content": "[4][0][1]" } },
+                { "when": "$exists([1][0])", "set": { "conversation_id": "[1][0]" } },
+                { "when": "$exists([1][1])", "set": { "response_id": "[1][1]" } },
+                { "when": "$exists([-3]) and $type([-3]) = 'string'", "set": { "model": "[-3]" } }
+              ],
+              "fields": {
+                "content": { "from": "content", "method": "last" },
+                "conversation_id": { "from": "conversation_id", "method": "first" },
+                "response_id": { "from": "response_id", "method": "first" },
+                "model": { "from": "model", "method": "last" }
+              }
             }
           ],
-          "prompt": "$[0][0]",
-          "conversation_id": "$[2][0]"
-        },
-        "response": {
-          "stream": {
-            "format": "length_prefixed",
-            "format_options": {
-              "header_strip": ")]}'\\n"
-            },
-            "rules": [
-              {
-                "when": "$[0][0] = 'wrb.fr'",
-                "preprocess": [
-                  {
-                    "op": "index",
-                    "value": 0
-                  },
-                  {
-                    "op": "index",
-                    "value": 2
-                  },
-                  {
-                    "op": "json_parse"
-                  }
-                ],
-                "extract": {
-                  "content": "$[4][0][1][0]",
-                  "conversation_id": "$[1][0]"
-                }
-              }
-            ],
-            "accumulate": {
-              "content": {
-                "from": "content",
-                "op": "last"
-              },
-              "conversation_id": {
-                "from": "conversation_id",
-                "op": "last"
-              }
-            },
-            "finalize": {
-              "content": "accumulated.content",
-              "model": "'gemini'"
-            }
+          "extract": {
+            "request.prompt": "$parse(f\\.req)[1][0][0]",
+            "request.language": "$parse(f\\.req)[1][1][0]",
+            "response.content": "$accumulated.content",
+            "response.conversation_id": "$accumulated.conversation_id",
+            "response.response_id": "$accumulated.response_id",
+            "response.model": "$accumulated.model"
           }
         }
+      ],
+
+      "output": {
+        "mode": "extract",
+        "tag": "ai:chat",
+        "normalize": {
+          "interaction.type": "'chat'",
+          "interaction.input.text": "$request.prompt",
+          "interaction.input.language": "$request.language",
+          "interaction.output.text": "$response.content",
+          "interaction.conversation_id": "$response.conversation_id",
+          "interaction.response_id": "$response.response_id",
+          "interaction.model": "$response.model"
+        },
+        "include_raw": false
+      }
+    },
+
+    "image_generation": {
+      "type": "asset_creation",
+      "name": "Image Generation",
+      "description": "Generate images with Gemini. Uses data_analysis_tool internally, returns multiple image variants.",
+
+      "endpoints": [
+        {
+          "role": "both",
+          "match": {
+            "url": "**/BardChatUi/data/assistant.lamda.BardFrontendService/StreamGenerate",
+            "method": "POST"
+          },
+          "pipeline": [
+            { "op": "parse", "format": "form", "apply_to": "request" },
+            { "op": "decode", "encoding": "base64", "apply_to": "response" },
+            {
+              "op": "stream",
+              "transport": "chunked",
+              "apply_to": "response",
+              "options": {
+                "prefix_strip": ")]}'",
+                "chunk_format": "length_prefixed"
+              }
+            },
+            {
+              "op": "parse",
+              "format": "json",
+              "apply_to": "response",
+              "nested_parse": "[0][2]"
+            },
+            {
+              "op": "accumulate",
+              "apply_to": "response",
+              "rules": [
+                { "when": "$exists([1][0])", "set": { "conversation_id": "[1][0]" } },
+                { "when": "$exists([1][1])", "set": { "response_id": "[1][1]" } },
+                { "when": "$exists([6][1][0])", "set": { "tool_name": "[6][1][0]" } },
+                { "when": "$exists([6][1][2][2])", "set": { "tool_status": "[6][1][2][2]" } },
+                {
+                  "when": "$exists([4][0][12][7][0][0]) and $count([4][0][12][7][0][0]) > 0",
+                  "set": { "images": "[4][0][12][7][0][0]" }
+                }
+              ],
+              "fields": {
+                "conversation_id": { "from": "conversation_id", "method": "first" },
+                "response_id": { "from": "response_id", "method": "first" },
+                "tool_name": { "from": "tool_name", "method": "first" },
+                "tool_status": { "from": "tool_status", "method": "last" },
+                "images": { "from": "images", "method": "last" }
+              }
+            }
+          ],
+          "extract": {
+            "request.prompt": "$parse(f\\.req)[1][0][0]",
+            "response.conversation_id": "$accumulated.conversation_id",
+            "response.response_id": "$accumulated.response_id",
+            "response.tool": "$accumulated.tool_name",
+            "response.images": "$accumulated.images[*][3] ? $accumulated.images[*][3] : $accumulated.images[*][6]",
+            "response.image_count": "$count($accumulated.images)"
+          }
+        }
+      ],
+
+      "output": {
+        "mode": "extract",
+        "tag": "ai:image_generation",
+        "normalize": {
+          "interaction.type": "'image_generation'",
+          "interaction.input.text": "$request.prompt",
+          "interaction.output.images": "$response.images",
+          "interaction.output.image_count": "$response.image_count",
+          "interaction.conversation_id": "$response.conversation_id",
+          "interaction.response_id": "$response.response_id",
+          "interaction.tool": "$response.tool"
+        },
+        "include_raw": false
       }
     }
   },
-  "pricing": {
-    "model": [
-      "subscription"
-    ],
-    "tiers": [
-      {
-        "id": "free",
-        "name": "Free",
-        "type": "free",
-        "monthly_usd": 0
+
+  "detection": [
+    {
+      "id": "user_profile",
+      "match": {
+        "url": "**/BardChatUi/data/batchexecute*",
+        "method": "POST",
+        "query": { "rpcids": "o30O0e" }
       },
-      {
-        "id": "advanced",
-        "name": "Advanced",
-        "type": "individual",
-        "monthly_usd": 20
+      "pipeline": [
+        { "op": "decode", "encoding": "base64" },
+        { "op": "parse", "format": "json", "nested_parse": "[0][2]" }
+      ],
+      "extract": {
+        "user.id": "[0][0][1][0]",
+        "user.name": "[0][0][1][2][1]"
       }
+    },
+    {
+      "id": "feature_flags",
+      "match": {
+        "url": "**/BardChatUi/data/batchexecute*",
+        "method": "POST",
+        "query": { "rpcids": "ESY5D" }
+      },
+      "pipeline": [
+        { "op": "decode", "encoding": "base64" },
+        { "op": "parse", "format": "json", "nested_parse": "[0][2]" }
+      ],
+      "extract": {
+        "features.enabled": "[0][23]"
+      }
+    }
+  ],
+
+  "pricing": {
+    "model": ["free", "subscription"],
+    "tiers": [
+      { "id": "free", "name": "Free", "type": "free", "monthly_usd": 0 },
+      { "id": "advanced", "name": "Gemini Advanced", "type": "individual", "monthly_usd": 20 },
+      { "id": "business", "name": "Gemini Business", "type": "team", "monthly_usd": 20 },
+      { "id": "enterprise", "name": "Gemini Enterprise", "type": "enterprise", "monthly_usd": 30 }
     ]
   }
 }

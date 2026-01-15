@@ -1,6 +1,6 @@
 {
   "$schema": "https://oisp.dev/schema/v0.1/bundle.schema.json",
-  "bundle_version": "2.1.0",
+  "bundle_version": "2.2.0",
   "domain_lookup": {
     "127.0.0.1:1234": "lmstudio",
     "ai-gateway.helicone.ai": "helicone",
@@ -83,7 +83,7 @@
       "provider": "aws_bedrock"
     }
   ],
-  "generated_at": "2026-01-14T18:06:08.590041+00:00",
+  "generated_at": "2026-01-15T00:59:12.828054+00:00",
   "logos_url": "https://models.dev/logos",
   "models": {
     "abacus/Qwen-QwQ-32B": {
@@ -44458,138 +44458,247 @@
       "arc": {
         "category": "browser",
         "icon": "arc.png",
+        "id": "arc",
         "name": "Arc",
-        "platforms": [
-          "macos",
-          "windows"
-        ],
         "signatures": {
           "macos": {
             "bundle_id": "company.thebrowser.Browser"
           },
           "windows": {
-            "exe": "Arc.exe"
+            "exe_name": "Arc.exe"
           }
         },
+        "source_type": "app",
         "vendor": "The Browser Company",
         "vendor_url": "https://arc.net"
       },
       "brave": {
         "category": "browser",
         "icon": "brave.png",
+        "id": "brave",
         "name": "Brave",
-        "platforms": [
-          "macos",
-          "windows",
-          "linux"
-        ],
         "signatures": {
           "linux": {
-            "exe": "brave"
+            "binary_name": "brave"
           },
           "macos": {
             "bundle_id": "com.brave.Browser"
           },
           "windows": {
-            "exe": "brave.exe"
+            "exe_name": "brave.exe"
           }
         },
+        "source_type": "app",
         "vendor": "Brave Software",
         "vendor_url": "https://brave.com"
       },
       "chrome": {
         "category": "browser",
         "icon": "google-chrome.png",
+        "id": "chrome",
         "name": "Google Chrome",
-        "platforms": [
-          "macos",
-          "windows",
-          "linux"
-        ],
         "signatures": {
           "linux": {
-            "exe": "chrome"
+            "binary_name": "chrome"
           },
           "macos": {
             "bundle_id": "com.google.Chrome"
           },
           "windows": {
-            "exe": "chrome.exe"
+            "exe_name": "chrome.exe"
           }
         },
+        "source_type": "app",
         "vendor": "Google",
         "vendor_url": "https://google.com/chrome"
       },
       "claude": {
-        "_har_analyzed": "2026-01-13",
-        "_notes": "SSE streaming with event types: message_start, content_block_start, content_block_delta, content_block_stop, message_delta, message_limit, message_stop. Response body is base64 encoded in HAR.",
-        "_status": "complete",
+        "$schema": "../schemas/tool-config.schema.json",
         "api_domains": [
           "claude.ai",
           "api.anthropic.com",
           "a-api.anthropic.com"
         ],
         "category": "ai-chat",
-        "detection": {
-          "subscription": [
-            {
-              "extract": {
-                "billing_interval": "$.billing_interval",
-                "next_charge_date": "$.next_charge_date",
-                "status": "$.status"
-              },
-              "type": "api_response",
-              "url": "**/api/organizations/*/subscription_details"
+        "detection": [
+          {
+            "extract": {
+              "subscription.billing_interval": "billing_interval",
+              "subscription.next_charge_date": "next_charge_date",
+              "subscription.plan": "status"
             },
-            {
-              "extract": {
-                "org_id": "$.uuid",
-                "org_name": "$.name"
-              },
-              "type": "api_response",
-              "url": "**/api/organizations/*"
+            "id": "subscription_details",
+            "match": {
+              "url": "**/api/organizations/*/subscription_details"
             }
-          ]
-        },
+          },
+          {
+            "extract": {
+              "org.billing_type": "billing_type",
+              "org.capabilities": "capabilities",
+              "org.id": "uuid",
+              "org.name": "name",
+              "org.rate_limit_tier": "rate_limit_tier"
+            },
+            "id": "organization_info",
+            "match": {
+              "url": "**/api/organizations/*"
+            },
+            "when": "$exists(uuid) and $exists(name) and $not($contains($request.url, '/'))"
+          },
+          {
+            "extract": {
+              "rate_limit.limit": "$headers['x-ratelimit-limit']",
+              "rate_limit.remaining": "$headers['x-ratelimit-remaining']"
+            },
+            "extract_from": "response_headers",
+            "id": "rate_limit_headers",
+            "match": {
+              "url": "**"
+            },
+            "when": "$exists($headers['x-ratelimit-remaining'])"
+          }
+        ],
         "features": {
           "chat": {
-            "description": "Chat with Claude AI assistant",
-            "name": "Chat Conversation",
-            "parser": {
-              "request": {
-                "locale": "locale",
-                "prompt": "prompt",
-                "timezone": "timezone"
-              },
-              "response": {
-                "conversation_id": "uuid",
-                "conversation_name": "name",
-                "response": "chat_messages[-1].content[0].text",
-                "timestamp": "chat_messages[-1].created_at"
-              }
-            },
-            "patterns": {
-              "request": {
-                "method": "POST",
-                "url": "**/api/organizations/*/chat_conversations/*/completion"
-              },
-              "response": {
-                "method": "GET",
-                "query_params": [
-                  "tree=True"
+            "description": "Real-time SSE streaming of Claude responses with extended thinking",
+            "endpoints": [
+              {
+                "extract": {
+                  "request.file_uuids": "files",
+                  "request.has_files": "$count(files) > 0",
+                  "request.parent_message": "parent_message_uuid",
+                  "request.prompt": "prompt",
+                  "response.content": "$accumulated.content",
+                  "response.has_thinking": "$accumulated.has_thinking",
+                  "response.message_id": "$accumulated.message_id",
+                  "response.model": "$accumulated.model",
+                  "response.thinking": "$accumulated.thinking",
+                  "response.thinking_summary": "$accumulated.thinking_summary"
+                },
+                "match": {
+                  "method": "POST",
+                  "url": "**/api/organizations/*/chat_conversations/*/completion"
+                },
+                "pipeline": [
+                  {
+                    "apply_to": "request",
+                    "format": "json",
+                    "op": "parse"
+                  },
+                  {
+                    "apply_to": "response",
+                    "op": "stream",
+                    "options": {
+                      "prefixes": [
+                        "data: "
+                      ],
+                      "skip": [
+                        "[DONE]"
+                      ]
+                    },
+                    "transport": "sse"
+                  },
+                  {
+                    "apply_to": "response",
+                    "fields": {
+                      "content": {
+                        "from": "content",
+                        "method": "concat"
+                      },
+                      "has_thinking": {
+                        "from": "has_thinking",
+                        "method": "first"
+                      },
+                      "message_id": {
+                        "from": "message_id",
+                        "method": "first"
+                      },
+                      "model": {
+                        "from": "model",
+                        "method": "first"
+                      },
+                      "thinking": {
+                        "from": "thinking",
+                        "method": "concat"
+                      },
+                      "thinking_summary": {
+                        "from": "thinking_summary",
+                        "method": "last"
+                      }
+                    },
+                    "op": "accumulate",
+                    "rules": [
+                      {
+                        "set": {
+                          "message_id": "message.uuid",
+                          "model": "message.model"
+                        },
+                        "when": "type = 'message_start'"
+                      },
+                      {
+                        "set": {
+                          "has_thinking": "true"
+                        },
+                        "when": "type = 'content_block_start' and content_block.type = 'thinking'"
+                      },
+                      {
+                        "set": {
+                          "content": "delta.text"
+                        },
+                        "when": "type = 'content_block_delta' and delta.type = 'text_delta'"
+                      },
+                      {
+                        "set": {
+                          "thinking": "delta.thinking"
+                        },
+                        "when": "type = 'content_block_delta' and delta.type = 'thinking_delta'"
+                      },
+                      {
+                        "set": {
+                          "thinking_summary": "delta.summary.summary"
+                        },
+                        "when": "type = 'content_block_delta' and delta.type = 'thinking_summary_delta'"
+                      },
+                      {
+                        "set": {
+                          "completed": "true"
+                        },
+                        "when": "type = 'message_stop'"
+                      }
+                    ]
+                  }
                 ],
-                "url": "**/api/organizations/*/chat_conversations/*"
+                "role": "both"
               }
+            ],
+            "name": "Chat Conversation",
+            "output": {
+              "include_raw": false,
+              "mode": "extract",
+              "normalize": {
+                "interaction.has_extended_thinking": "$response.has_thinking",
+                "interaction.input.file_uuids": "$request.file_uuids",
+                "interaction.input.has_files": "$request.has_files",
+                "interaction.input.text": "$request.prompt",
+                "interaction.message_id": "$response.message_id",
+                "interaction.model": "$response.model",
+                "interaction.output.text": "$response.content",
+                "interaction.output.thinking": "$response.thinking",
+                "interaction.output.thinking_summary": "$response.thinking_summary",
+                "interaction.type": "'chat'"
+              },
+              "tag": "ai:chat"
             },
             "type": "chat"
           }
         },
         "icon": "claude.png",
-        "name": "Claude",
-        "platforms": [
-          "macos",
-          "windows"
-        ],
+        "id": "claude",
+        "meta": {
+          "docs_url": "https://docs.anthropic.com"
+        },
+        "name": "Claude Desktop",
         "pricing": {
           "model": [
             "subscription"
@@ -44625,308 +44734,885 @@
           "macos": {
             "bundle_id": "com.anthropic.claudefordesktop",
             "team_id": "Q6L2SF6YDW"
+          },
+          "windows": {
+            "exe_name": "Claude.exe",
+            "publisher": "Anthropic"
           }
         },
+        "source_type": "app",
         "vendor": "Anthropic",
         "vendor_url": "https://anthropic.com"
+      },
+      "cursor": {
+        "$schema": "../schemas/tool-config.schema.json",
+        "api_domains": [
+          "api2.cursor.sh",
+          "api3.cursor.sh"
+        ],
+        "category": "coding",
+        "detection": [
+          {
+            "extract": {
+              "subscription.is_team_member": "isTeamMember",
+              "subscription.plan": "membershipType",
+              "subscription.status": "subscriptionStatus",
+              "subscription.team_membership_type": "teamMembershipType"
+            },
+            "id": "stripe_profile",
+            "match": {
+              "method": "GET",
+              "url": "**/auth/full_stripe_profile"
+            },
+            "pipeline": [
+              {
+                "encoding": "base64",
+                "op": "decode"
+              },
+              {
+                "format": "json",
+                "op": "parse"
+              }
+            ]
+          },
+          {
+            "extract": {
+              "enterprise.is_user": "events[0].user.custom.isEnterpriseUser",
+              "privacy.mode_type": "events[0].user.custom.privacyModeType",
+              "subscription.plan": "events[0].user.custom.stripeMembershipStatus",
+              "user.id": "events[0].user.userID"
+            },
+            "extract_from": "request_body",
+            "id": "statsig_user",
+            "match": {
+              "method": "POST",
+              "url": "**/tev1/v1/rgstr**"
+            },
+            "pipeline": [
+              {
+                "encoding": "base64",
+                "op": "decode"
+              },
+              {
+                "encoding": "gzip",
+                "op": "decode"
+              },
+              {
+                "format": "json",
+                "op": "parse"
+              }
+            ],
+            "when": "$exists(events[0].user.userID)"
+          }
+        ],
+        "features": {},
+        "icon": "cursor.png",
+        "id": "cursor",
+        "meta": {
+          "_notes": "Cursor uses Connect RPC with Protocol Buffers. Feature extraction requires protobuf parsing.",
+          "docs_url": "https://docs.cursor.com",
+          "protocol": "connect-rpc-protobuf"
+        },
+        "name": "Cursor",
+        "pricing": {
+          "model": [
+            "subscription",
+            "usage"
+          ],
+          "tiers": [
+            {
+              "id": "hobby",
+              "monthly_usd": 0,
+              "name": "Hobby",
+              "type": "free"
+            },
+            {
+              "id": "pro",
+              "monthly_usd": 20,
+              "name": "Pro",
+              "type": "individual"
+            },
+            {
+              "id": "business",
+              "monthly_usd": 40,
+              "name": "Business",
+              "type": "team"
+            }
+          ]
+        },
+        "signatures": {
+          "linux": {
+            "binary_name": "cursor",
+            "desktop_file": "cursor.desktop"
+          },
+          "macos": {
+            "bundle_id": "com.todesktop.230313mzl4w4u92",
+            "team_id": "VDXQ22DGB9"
+          },
+          "windows": {
+            "exe_name": "Cursor.exe",
+            "publisher": "Anysphere Inc"
+          }
+        },
+        "source_type": "app",
+        "vendor": "Anysphere",
+        "vendor_url": "https://cursor.com"
       },
       "edge": {
         "category": "browser",
         "icon": "edge.png",
+        "id": "edge",
         "name": "Microsoft Edge",
-        "platforms": [
-          "macos",
-          "windows",
-          "linux"
-        ],
         "signatures": {
           "linux": {
-            "exe": "msedge"
+            "binary_name": "msedge"
           },
           "macos": {
             "bundle_id": "com.microsoft.edgemac"
           },
           "windows": {
-            "exe": "msedge.exe"
+            "exe_name": "msedge.exe"
           }
         },
+        "source_type": "app",
         "vendor": "Microsoft",
         "vendor_url": "https://microsoft.com/edge"
       },
       "firefox": {
         "category": "browser",
         "icon": "firefox.png",
+        "id": "firefox",
         "name": "Firefox",
-        "platforms": [
-          "macos",
-          "windows",
-          "linux"
-        ],
         "signatures": {
           "linux": {
-            "exe": "firefox"
+            "binary_name": "firefox"
           },
           "macos": {
             "bundle_id": "org.mozilla.firefox"
           },
           "windows": {
-            "exe": "firefox.exe"
+            "exe_name": "firefox.exe"
           }
         },
+        "source_type": "app",
         "vendor": "Mozilla",
         "vendor_url": "https://mozilla.org/firefox"
       },
       "granola": {
-        "ai": "native",
+        "$schema": "../schemas/tool-config.schema.json",
         "api_domains": [
-          "stream.api.granola.ai",
           "api.granola.ai",
-          "*.granola.ai"
+          "stream.api.granola.ai"
         ],
         "category": "productivity",
-        "detection": {
-          "subscription": [
-            {
-              "extract": {
-                "plan_type": "$.workspaces[0].plan_type",
-                "role": "$.workspaces[0].role"
-              },
-              "type": "api_response",
-              "url": "**/v1/get-workspaces"
-            }
-          ]
-        },
-        "features": {
-          "chat": {
-            "description": "Chat with your meeting notes and documents using AI",
-            "name": "AI Chat with Documents",
-            "parser": {
-              "request": {
-                "context": "document_ids",
-                "model": "prompt_config.model",
-                "prompt": "chat_history[-1].text"
-              },
-              "response": {
-                "stream": {
-                  "accumulate": {
-                    "content": {
-                      "from": "content",
-                      "op": "last"
-                    },
-                    "reasoning": {
-                      "from": "reasoning",
-                      "op": "last"
-                    }
-                  },
-                  "finalize": {
-                    "content": "accumulated.content"
-                  },
-                  "format": "ndjson",
-                  "format_options": {
-                    "delimiter": "-----CHUNK_BOUNDARY-----"
-                  },
-                  "rules": [
-                    {
-                      "extract": {
-                        "content": "outputs[type = 'text_with_citations'].plain_text"
-                      },
-                      "when": "$exists(outputs) and $exists(outputs[type = 'text_with_citations'].plain_text)"
-                    },
-                    {
-                      "extract": {
-                        "reasoning": "outputs[type = 'reasoning'].text"
-                      },
-                      "when": "$exists(outputs) and $exists(outputs[type = 'reasoning'].text)"
-                    }
-                  ]
-                }
-              }
+        "detection": [
+          {
+            "extract": {
+              "subscription.plan_id": "active_plan_id",
+              "subscription.status": "status"
             },
-            "patterns": [
+            "id": "subscription",
+            "match": {
+              "method": "POST",
+              "url": "**/v1/get-current-subscription"
+            }
+          },
+          {
+            "extract": {
+              "workspace.id": "workspaces[0].workspace.workspace_id",
+              "workspace.name": "workspaces[0].workspace.display_name",
+              "workspace.slug": "workspaces[0].workspace.slug"
+            },
+            "id": "workspace",
+            "match": {
+              "method": "POST",
+              "url": "**/v1/get-workspaces"
+            },
+            "when": "$exists(workspaces[0])"
+          },
+          {
+            "extract": {
+              "user.email": "members[0].email",
+              "user.id": "members[0].user_id",
+              "user.name": "members[0].name",
+              "user.role": "members[0].role"
+            },
+            "id": "user_info",
+            "match": {
+              "method": "POST",
+              "url": "**/v1/get-workspace-members"
+            },
+            "when": "$exists(members[0])"
+          }
+        ],
+        "features": {
+          "global_chat": {
+            "description": "Multi-turn chat across all meetings with reasoning and citations",
+            "endpoints": [
               {
-                "method": "POST",
-                "url": "**/v1/chat-with-documents"
+                "extract": {
+                  "request.chat_context": "chat_context",
+                  "request.model": "prompt_config.model",
+                  "request.num_documents": "num_total_documents",
+                  "request.prompt": "chat_history[-1].text",
+                  "response.content": "$accumulated.content",
+                  "response.reasoning": "$accumulated.reasoning"
+                },
+                "match": {
+                  "method": "POST",
+                  "url": "**/v1/chat-with-documents"
+                },
+                "pipeline": [
+                  {
+                    "apply_to": "request",
+                    "format": "json",
+                    "op": "parse"
+                  },
+                  {
+                    "apply_to": "response",
+                    "op": "stream",
+                    "options": {
+                      "delimiter": "-----CHUNK_BOUNDARY-----"
+                    },
+                    "transport": "chunked"
+                  },
+                  {
+                    "apply_to": "response",
+                    "fields": {
+                      "content": {
+                        "from": "content",
+                        "method": "last"
+                      },
+                      "reasoning": {
+                        "from": "reasoning",
+                        "method": "last"
+                      }
+                    },
+                    "op": "accumulate",
+                    "rules": [
+                      {
+                        "set": {
+                          "reasoning": "outputs[0].text"
+                        },
+                        "when": "outputs[0].type = 'reasoning'"
+                      },
+                      {
+                        "set": {
+                          "content": "outputs[0].text"
+                        },
+                        "when": "outputs[0].type = 'text'"
+                      },
+                      {
+                        "set": {
+                          "content": "$join(response.response_lines.answer_text, '\\n')"
+                        },
+                        "when": "$exists(response.response_lines)"
+                      }
+                    ]
+                  }
+                ],
+                "role": "both"
               }
             ],
+            "name": "Global Chat",
+            "output": {
+              "include_raw": false,
+              "mode": "extract",
+              "normalize": {
+                "interaction.input.context": "$request.chat_context",
+                "interaction.input.num_documents": "$request.num_documents",
+                "interaction.input.text": "$request.prompt",
+                "interaction.model": "$request.model",
+                "interaction.output.reasoning": "$response.reasoning",
+                "interaction.output.text": "$response.content",
+                "interaction.type": "'chat'"
+              },
+              "tag": "ai:chat"
+            },
             "type": "chat"
+          },
+          "meeting_summary": {
+            "description": "Generate structured meeting notes from transcript using templates",
+            "endpoints": [
+              {
+                "extract": {
+                  "request.calendar_event_title": "prompt_variables.calendar_event_title",
+                  "request.document_id": "prompt_variables.document_id",
+                  "request.prompt_slug": "prompt_slug",
+                  "request.template_title": "prompt_variables.template_title",
+                  "response.completion_tokens": "$accumulated.completion_tokens",
+                  "response.content": "$accumulated.content",
+                  "response.prompt_tokens": "$accumulated.prompt_tokens"
+                },
+                "match": {
+                  "method": "POST",
+                  "url": "**/v1/llm-proxy-stream"
+                },
+                "pipeline": [
+                  {
+                    "apply_to": "request",
+                    "format": "json",
+                    "op": "parse"
+                  },
+                  {
+                    "apply_to": "response",
+                    "op": "stream",
+                    "options": {
+                      "delimiter": "-----CHUNK_BOUNDARY-----"
+                    },
+                    "transport": "chunked"
+                  },
+                  {
+                    "apply_to": "response",
+                    "fields": {
+                      "completion_tokens": {
+                        "from": "completion_tokens",
+                        "method": "last"
+                      },
+                      "content": {
+                        "from": "content",
+                        "method": "concat"
+                      },
+                      "prompt_tokens": {
+                        "from": "prompt_tokens",
+                        "method": "last"
+                      }
+                    },
+                    "op": "accumulate",
+                    "rules": [
+                      {
+                        "set": {
+                          "content": "choices[0].delta.content"
+                        },
+                        "when": "$exists(choices[0].delta.content)"
+                      },
+                      {
+                        "set": {
+                          "completion_tokens": "usage.completion_tokens",
+                          "prompt_tokens": "usage.prompt_tokens"
+                        },
+                        "when": "$exists(usage)"
+                      }
+                    ]
+                  }
+                ],
+                "role": "both"
+              }
+            ],
+            "name": "Meeting Summary Generation",
+            "output": {
+              "include_raw": false,
+              "mode": "extract",
+              "normalize": {
+                "interaction.input.document_id": "$request.document_id",
+                "interaction.input.meeting_title": "$request.calendar_event_title",
+                "interaction.input.prompt_slug": "$request.prompt_slug",
+                "interaction.input.template": "$request.template_title",
+                "interaction.output.text": "$response.content",
+                "interaction.type": "'summary'",
+                "interaction.usage.completion_tokens": "$response.completion_tokens",
+                "interaction.usage.prompt_tokens": "$response.prompt_tokens"
+              },
+              "tag": "ai:summary"
+            },
+            "type": "text_manipulation"
           }
         },
         "icon": "granola.png",
+        "id": "granola",
+        "meta": {
+          "description": "AI-powered meeting notes and assistant"
+        },
         "name": "Granola",
-        "platforms": [
-          "macos"
-        ],
+        "pricing": {
+          "model": [
+            "subscription"
+          ],
+          "tiers": [
+            {
+              "id": "free-trial",
+              "monthly_usd": 0,
+              "name": "Free Trial",
+              "type": "free"
+            },
+            {
+              "id": "pro",
+              "monthly_usd": null,
+              "name": "Pro",
+              "type": "individual"
+            },
+            {
+              "id": "team",
+              "monthly_usd": null,
+              "name": "Team",
+              "type": "team"
+            }
+          ]
+        },
         "signatures": {
           "macos": {
             "bundle_id": "com.granola.app",
             "team_id": "QZ7DHHLN25"
           }
         },
-        "vendor": "Granola",
+        "source_type": "app",
+        "vendor": "Granola Labs",
         "vendor_url": "https://granola.ai"
       },
       "opera": {
         "category": "browser",
         "icon": "opera.png",
+        "id": "opera",
         "name": "Opera",
-        "platforms": [
-          "macos",
-          "windows",
-          "linux"
-        ],
         "signatures": {
           "linux": {
-            "exe": "opera"
+            "binary_name": "opera"
           },
           "macos": {
             "bundle_id": "com.operasoftware.Opera"
           },
           "windows": {
-            "exe": "opera.exe"
+            "exe_name": "opera.exe"
           }
         },
+        "source_type": "app",
         "vendor": "Opera Software",
         "vendor_url": "https://opera.com"
+      },
+      "raycast": {
+        "$schema": "../schemas/tool-config.schema.json",
+        "api_domains": [
+          "backend.raycast.com"
+        ],
+        "category": "productivity",
+        "detection": [
+          {
+            "extract": {
+              "subscription.eligible_for_ai": "eligible_for_ai",
+              "subscription.has_active": "has_active_subscription",
+              "subscription.has_pro_features": "has_pro_features",
+              "subscription.plan": "subscription",
+              "user.email": "email",
+              "user.id": "id",
+              "user.name": "name"
+            },
+            "id": "user_subscription",
+            "match": {
+              "url": "**/api/v1/me"
+            },
+            "pipeline": [
+              {
+                "encoding": "base64",
+                "op": "decode"
+              },
+              {
+                "format": "json",
+                "op": "parse"
+              }
+            ]
+          }
+        ],
+        "features": {
+          "ai_chat": {
+            "description": "Chat with AI in Raycast. Filter by source='ai_chat' to exclude internal title generation requests.",
+            "endpoints": [
+              {
+                "extract": {
+                  "request.message_id": "message_id",
+                  "request.model": "model",
+                  "request.provider": "provider",
+                  "request.source": "source",
+                  "request.temperature": "temperature",
+                  "request.thread_id": "thread_id",
+                  "request.user_message": "messages[-1].content.text",
+                  "response.content": "$accumulated.content",
+                  "response.finish_reason": "$accumulated.finish_reason"
+                },
+                "match": {
+                  "method": "POST",
+                  "url": "**/api/v1/ai/chat_completions"
+                },
+                "pipeline": [
+                  {
+                    "apply_to": "request",
+                    "format": "json",
+                    "op": "parse"
+                  },
+                  {
+                    "apply_to": "response",
+                    "op": "stream",
+                    "options": {
+                      "prefixes": [
+                        "data: "
+                      ]
+                    },
+                    "transport": "sse"
+                  },
+                  {
+                    "apply_to": "response",
+                    "fields": {
+                      "content": {
+                        "from": "content",
+                        "method": "concat"
+                      },
+                      "finish_reason": {
+                        "from": "finish_reason",
+                        "method": "last"
+                      }
+                    },
+                    "op": "accumulate",
+                    "rules": [
+                      {
+                        "set": {
+                          "content": "text"
+                        },
+                        "when": "$exists(text)"
+                      },
+                      {
+                        "set": {
+                          "finish_reason": "finish_reason"
+                        },
+                        "when": "$exists(finish_reason)"
+                      }
+                    ]
+                  }
+                ],
+                "role": "both"
+              }
+            ],
+            "name": "AI Chat",
+            "output": {
+              "include_raw": false,
+              "mode": "extract",
+              "normalize": {
+                "interaction.input.text": "$request.user_message",
+                "interaction.message_id": "$request.message_id",
+                "interaction.model": "$request.model",
+                "interaction.output.text": "$response.content",
+                "interaction.provider": "$request.provider",
+                "interaction.source": "$request.source",
+                "interaction.thread_id": "$request.thread_id",
+                "interaction.type": "'chat'"
+              },
+              "tag": "ai:chat"
+            },
+            "type": "chat"
+          }
+        },
+        "icon": "raycast.png",
+        "id": "raycast",
+        "meta": {
+          "docs_url": "https://manual.raycast.com"
+        },
+        "name": "Raycast",
+        "pricing": {
+          "model": [
+            "subscription"
+          ],
+          "tiers": [
+            {
+              "id": "free",
+              "monthly_usd": 0,
+              "name": "Free",
+              "type": "free"
+            },
+            {
+              "id": "pro",
+              "monthly_usd": 8,
+              "name": "Pro",
+              "type": "individual"
+            },
+            {
+              "id": "teams",
+              "monthly_usd": 12,
+              "name": "Teams",
+              "type": "team"
+            }
+          ]
+        },
+        "signatures": {
+          "macos": {
+            "bundle_id": "com.raycast.macos",
+            "team_id": "SY64MV22J9"
+          }
+        },
+        "source_type": "app",
+        "vendor": "Raycast",
+        "vendor_url": "https://raycast.com"
       },
       "safari": {
         "category": "browser",
         "icon": "safari.png",
+        "id": "safari",
         "name": "Safari",
-        "platforms": [
-          "macos"
-        ],
         "signatures": {
           "macos": {
             "bundle_id": "com.apple.Safari"
           }
         },
+        "source_type": "app",
         "vendor": "Apple",
         "vendor_url": "https://apple.com/safari"
       },
       "vivaldi": {
         "category": "browser",
         "icon": "vivaldi.png",
+        "id": "vivaldi",
         "name": "Vivaldi",
-        "platforms": [
-          "macos",
-          "windows",
-          "linux"
-        ],
         "signatures": {
           "linux": {
-            "exe": "vivaldi"
+            "binary_name": "vivaldi"
           },
           "macos": {
             "bundle_id": "com.vivaldi.Vivaldi"
           },
           "windows": {
-            "exe": "vivaldi.exe"
+            "exe_name": "vivaldi.exe"
           }
         },
+        "source_type": "app",
         "vendor": "Vivaldi Technologies",
         "vendor_url": "https://vivaldi.com"
+      },
+      "wispr-flow": {
+        "$schema": "../schemas/tool-config.schema.json",
+        "api_domains": [
+          "api.wisprflow.ai"
+        ],
+        "category": "voice",
+        "detection": [
+          {
+            "extract": {
+              "app.environment": "properties.environment",
+              "app.version": "properties.version",
+              "device.architecture": "properties.architecture",
+              "device.id": "properties.deviceId",
+              "device.platform": "properties.platform",
+              "session.id": "properties.sessionId",
+              "user.id": "user_id"
+            },
+            "extract_from": "request_body",
+            "id": "user_session",
+            "match": {
+              "method": "POST",
+              "url": "**/api/v1/analytics/track"
+            },
+            "when": "$exists(user_id)"
+          }
+        ],
+        "features": {
+          "transcription": {
+            "description": "Real-time voice-to-text transcription with formatting. Detected via analytics events.",
+            "endpoints": [
+              {
+                "extract": {
+                  "asr_time_ms": "properties.basetenNetworkMetrics.asrTimeMsecs",
+                  "event_type": "event",
+                  "llm_time_ms": "properties.basetenNetworkMetrics.llmTimeMsecs",
+                  "recording_length_ms": "properties.timingInformation.recordingLength",
+                  "status": "properties.status",
+                  "target_app": "properties.appName",
+                  "target_bundle_id": "properties.appBundleID",
+                  "total_duration_ms": "properties.basetenNetworkMetrics.totalDurationMsecs",
+                  "transcript_id": "properties.transcriptEntityUUID"
+                },
+                "match": {
+                  "method": "POST",
+                  "url": "**/api/v1/analytics/track"
+                },
+                "pipeline": [
+                  {
+                    "apply_to": "request",
+                    "format": "json",
+                    "op": "parse"
+                  }
+                ],
+                "role": "detect"
+              }
+            ],
+            "name": "Voice Transcription",
+            "output": {
+              "include_raw": false,
+              "mode": "detect",
+              "normalize": {
+                "interaction.event": "$request.event_type",
+                "interaction.status": "$request.status",
+                "interaction.target.app": "$request.target_app",
+                "interaction.target.bundle_id": "$request.target_bundle_id",
+                "interaction.timing.asr_ms": "$request.asr_time_ms",
+                "interaction.timing.llm_ms": "$request.llm_time_ms",
+                "interaction.timing.recording_ms": "$request.recording_length_ms",
+                "interaction.timing.total_ms": "$request.total_duration_ms",
+                "interaction.transcript_id": "$request.transcript_id",
+                "interaction.type": "'transcription'"
+              },
+              "tag": "ai:transcription"
+            },
+            "type": "other"
+          }
+        },
+        "icon": "wispr-flow.png",
+        "id": "wispr-flow",
+        "meta": {
+          "description": "AI-powered voice dictation and transcription tool",
+          "note": "Actual transcription happens over WebSocket (not captured in HAR). Detection via analytics events."
+        },
+        "name": "Wispr Flow",
+        "pricing": {
+          "model": [
+            "subscription"
+          ],
+          "tiers": [
+            {
+              "id": "trial",
+              "monthly_usd": 0,
+              "name": "Trial",
+              "type": "free"
+            },
+            {
+              "id": "pro",
+              "monthly_usd": 15,
+              "name": "Pro",
+              "type": "individual"
+            }
+          ]
+        },
+        "signatures": {
+          "macos": {
+            "bundle_id": "com.electron.wispr-flow",
+            "team_id": "C9VQZ78H85"
+          }
+        },
+        "source_type": "app",
+        "vendor": "Wispr",
+        "vendor_url": "https://wisprflow.ai"
       }
     },
     "icons_url": "https://oisp.dev/registry/icons",
     "version": "1.0.0",
     "websites": {
-      "active-ai": {
-        "api_domains": [],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Active.ai",
-        "pricing": {
-          "model": [
-            "enterprise"
-          ],
-          "tiers": [
-            {
-              "id": "enterprise",
-              "name": "Enterprise",
-              "type": "enterprise"
-            }
-          ]
-        },
-        "vendor": "Active Intelligence Pte Ltd",
-        "vendor_url": "https://active.ai/"
-      },
-      "ada": {
-        "api_domains": [],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Ada",
-        "pricing": {
-          "model": [
-            "enterprise"
-          ],
-          "tiers": [
-            {
-              "id": "starter",
-              "name": "Starter",
-              "type": "enterprise"
+      "canva": {
+        "$schema": "../schemas/tool-config.schema.json",
+        "category": "productivity",
+        "detection": [
+          {
+            "extract": {
+              "user.display_name": "members[0].user.displayName",
+              "user.email": "members[0].user.email"
             },
-            {
-              "id": "professional",
-              "name": "Professional",
-              "type": "enterprise"
+            "id": "user_profile",
+            "match": {
+              "method": "GET",
+              "url": "**/_ajax/profile/v2/brands/*/members*"
             },
-            {
-              "id": "enterprise",
-              "name": "Enterprise",
-              "type": "enterprise"
-            }
-          ]
-        },
-        "vendor": "Ada Support Inc.",
-        "vendor_url": "https://www.ada.cx/"
-      },
-      "aisera": {
-        "api_domains": [],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Aisera",
-        "pricing": {
-          "model": [
-            "enterprise"
-          ],
-          "tiers": [
-            {
-              "id": "enterprise",
-              "name": "Enterprise",
-              "type": "enterprise"
-            }
-          ]
-        },
-        "vendor": "Aisera Inc.",
-        "vendor_url": "https://aisera.com/"
-      },
-      "aleph-alpha": {
-        "api_domains": [],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Aleph Alpha",
-        "pricing": {
-          "model": [
-            "enterprise"
-          ],
-          "tiers": [
-            {
-              "id": "enterprise",
-              "name": "Enterprise",
-              "type": "enterprise"
-            }
-          ]
-        },
-        "vendor": "Aleph Alpha GmbH",
-        "vendor_url": "https://aleph-alpha.com/"
-      },
-      "alexa": {
-        "api_domains": [
-          "alexa.amazon.com"
+            "pipeline": [
+              {
+                "encoding": "base64",
+                "op": "decode"
+              },
+              {
+                "format": "json",
+                "op": "parse"
+              }
+            ],
+            "when": "$exists(members[0].user.email)"
+          }
         ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Alexa",
+        "domains": [
+          "canva.com",
+          "www.canva.com"
+        ],
+        "features": {
+          "platform_creation": {
+            "description": "AI-powered design generation from user prompts. Detects when Canva AI creates invitation, presentation, or other design templates.",
+            "endpoints": [
+              {
+                "extract": {
+                  "request.prompt": "B[0].A",
+                  "request.session_id": "C",
+                  "response.thread_id": "A"
+                },
+                "match": {
+                  "method": "POST",
+                  "url": "**/_ajax/assistant/threads"
+                },
+                "pipeline": [
+                  {
+                    "apply_to": "request",
+                    "format": "json",
+                    "op": "parse"
+                  },
+                  {
+                    "apply_to": "response",
+                    "encoding": "base64",
+                    "op": "decode"
+                  },
+                  {
+                    "apply_to": "response",
+                    "format": "json",
+                    "op": "parse",
+                    "prefix_strip": "//"
+                  }
+                ],
+                "role": "request"
+              },
+              {
+                "correlate": {
+                  "by": "url_segment",
+                  "segment": -1
+                },
+                "extract": {
+                  "response.brand_id": "H",
+                  "response.design_ids": "A[*].A.Q.Q[*].A",
+                  "response.designs": "A[*].A.Q.Q[*].B",
+                  "response.thumbnails": "A[*].A.Q.Q[*].K",
+                  "response.user_id": "I"
+                },
+                "match": {
+                  "method": "GET",
+                  "query": {
+                    "afterMessageSeq": "*"
+                  },
+                  "url": "**/_ajax/assistant/threads/*"
+                },
+                "pipeline": [
+                  {
+                    "apply_to": "response",
+                    "encoding": "base64",
+                    "op": "decode"
+                  },
+                  {
+                    "apply_to": "response",
+                    "format": "json",
+                    "op": "parse",
+                    "prefix_strip": "//"
+                  }
+                ],
+                "role": "response"
+              }
+            ],
+            "name": "Design Generation",
+            "output": {
+              "include_raw": false,
+              "mode": "detect",
+              "normalize": {
+                "interaction.input.text": "$request.prompt",
+                "interaction.output.design_ids": "$response.design_ids",
+                "interaction.output.design_titles": "$response.designs",
+                "interaction.thread_id": "$response.thread_id",
+                "interaction.type": "'platform_creation'"
+              },
+              "tag": "ai:platform_creation"
+            },
+            "type": "platform_output"
+          }
+        },
+        "id": "canva",
+        "meta": {
+          "docs_url": "https://www.canva.com/help",
+          "notes": "Canva uses an AI assistant for design generation. The flow involves intent classification, thread creation with the user's prompt, and polling for generated designs. Responses are base64-encoded with an anti-XSSI prefix ')]}'while(1);</x>//'."
+        },
+        "name": "Canva",
         "pricing": {
           "model": [
             "free",
@@ -44936,673 +45622,250 @@
             {
               "id": "free",
               "monthly_usd": 0,
-              "name": "Free",
-              "type": "free"
-            },
-            {
-              "id": "alexa_plus",
-              "name": "Alexa+",
-              "type": "individual"
-            }
-          ]
-        },
-        "vendor": "Amazon",
-        "vendor_url": "https://www.amazon.com/alexa"
-      },
-      "alice-pandorabots": {
-        "api_domains": [
-          "www.pandorabots.com"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "A.L.I.C.E.",
-        "pricing": {
-          "model": [
-            "free"
-          ],
-          "tiers": [
-            {
-              "id": "free",
-              "monthly_usd": 0,
-              "name": "Free",
-              "type": "free"
-            }
-          ]
-        },
-        "vendor": "Pandorabots Inc.",
-        "vendor_url": "https://www.pandorabots.com/"
-      },
-      "alice-yandex": {
-        "api_domains": [],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Alice",
-        "pricing": {
-          "model": [
-            "free"
-          ],
-          "tiers": [
-            {
-              "id": "free",
-              "monthly_usd": 0,
-              "name": "Free",
-              "type": "free"
-            }
-          ]
-        },
-        "vendor": "Yandex LLC",
-        "vendor_url": "https://yandex.com/"
-      },
-      "aligenie": {
-        "api_domains": [],
-        "category": "ai-chat",
-        "features": {},
-        "name": "AliGenie",
-        "pricing": {
-          "model": [
-            "hardware"
-          ],
-          "tiers": [
-            {
-              "id": "hardware",
-              "name": "Hardware",
-              "type": "hardware"
-            }
-          ]
-        },
-        "vendor": "Alibaba Group",
-        "vendor_url": "https://www.alibaba.com/"
-      },
-      "alphachat": {
-        "api_domains": [
-          "app.alphachat.ai"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "alphachat",
-        "pricing": {
-          "model": [
-            "subscription"
-          ],
-          "tiers": [
-            {
-              "id": "standard",
-              "name": "Standard",
-              "type": "team"
-            }
-          ]
-        },
-        "vendor": "Alphachat AI",
-        "vendor_url": "https://alphachat.ai/"
-      },
-      "amazon-lex": {
-        "api_domains": [
-          "console.aws.amazon.com"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Amazon Lex",
-        "pricing": {
-          "model": [
-            "free",
-            "usage"
-          ],
-          "tiers": [
-            {
-              "id": "free",
-              "monthly_usd": 0,
-              "name": "Free Tier",
-              "type": "free"
-            },
-            {
-              "id": "pay_as_you_go",
-              "name": "Pay As You Go",
-              "type": "usage"
-            }
-          ]
-        },
-        "vendor": "Amazon Web Services (AWS)",
-        "vendor_url": "https://aws.amazon.com/lex/"
-      },
-      "amazon-q": {
-        "api_domains": [
-          "console.aws.amazon.com"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Q",
-        "pricing": {
-          "model": [
-            "free",
-            "subscription"
-          ],
-          "tiers": [
-            {
-              "id": "free",
-              "monthly_usd": 0,
-              "name": "Free",
+              "name": "Canva Free",
               "type": "free"
             },
             {
               "id": "pro",
-              "name": "Pro",
-              "type": "individual"
-            }
-          ]
-        },
-        "vendor": "Amazon Web Services (AWS)",
-        "vendor_url": "https://aws.amazon.com/q/"
-      },
-      "amelia": {
-        "api_domains": [],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Amelia",
-        "pricing": {
-          "model": [
-            "enterprise"
-          ],
-          "tiers": [
-            {
-              "id": "enterprise",
-              "name": "Enterprise",
-              "type": "enterprise"
-            }
-          ]
-        },
-        "vendor": "SoundHound AI",
-        "vendor_url": "https://www.soundhound.com/"
-      },
-      "avaamo": {
-        "api_domains": [],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Avaamo.ai",
-        "pricing": {
-          "model": [
-            "enterprise"
-          ],
-          "tiers": [
-            {
-              "id": "enterprise",
-              "name": "Enterprise",
-              "type": "enterprise"
-            }
-          ]
-        },
-        "vendor": "Avaamo Inc.",
-        "vendor_url": "https://avaamo.ai/"
-      },
-      "baichuan-ai": {
-        "api_domains": [
-          "www.baichuan-ai.com"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Baichuan AI",
-        "pricing": {
-          "model": [
-            "usage"
-          ],
-          "tiers": [
-            {
-              "id": "api_access",
-              "name": "API Access",
-              "type": "usage"
-            }
-          ]
-        },
-        "vendor": "Beijing Baichuan Intelligent Technology Co., Ltd.",
-        "vendor_url": "https://www.baichuan-ai.com/"
-      },
-      "bharatgpt": {
-        "api_domains": [
-          "bharatgpt.ai"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "BharatGPT",
-        "pricing": {
-          "model": [
-            "free",
-            "usage"
-          ],
-          "tiers": [
-            {
-              "id": "free",
-              "monthly_usd": 0,
-              "name": "Free",
-              "type": "free"
-            },
-            {
-              "id": "api_access",
-              "name": "API Access",
-              "type": "usage"
-            }
-          ]
-        },
-        "vendor": "CoRover.ai",
-        "vendor_url": "https://corover.ai/"
-      },
-      "bixby": {
-        "api_domains": [],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Bixby",
-        "pricing": {
-          "model": [
-            "free"
-          ],
-          "tiers": [
-            {
-              "id": "free",
-              "monthly_usd": 0,
-              "name": "Free",
-              "type": "free"
-            }
-          ]
-        },
-        "vendor": "Samsung Electronics",
-        "vendor_url": "https://www.samsung.com/"
-      },
-      "bland-ai": {
-        "api_domains": [
-          "app.bland.ai"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Bland AI",
-        "pricing": {
-          "model": [
-            "free",
-            "subscription",
-            "enterprise"
-          ],
-          "tiers": [
-            {
-              "id": "free",
-              "monthly_usd": 0,
-              "name": "Free",
-              "type": "free"
-            },
-            {
-              "id": "start",
-              "name": "Start",
+              "monthly_usd": 15,
+              "name": "Canva Pro",
               "type": "individual"
             },
             {
-              "id": "build",
-              "name": "Build",
-              "type": "individual"
-            },
-            {
-              "id": "scale",
-              "name": "Scale",
-              "type": "individual"
-            },
-            {
-              "id": "enterprise",
-              "name": "Enterprise",
-              "type": "enterprise"
-            }
-          ]
-        },
-        "vendor": "Bland AI Inc.",
-        "vendor_url": "https://www.bland.ai/"
-      },
-      "boost-ai": {
-        "api_domains": [],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Boost.ai",
-        "pricing": {
-          "model": [
-            "enterprise"
-          ],
-          "tiers": [
-            {
-              "id": "enterprise",
-              "name": "Enterprise",
-              "type": "enterprise"
-            }
-          ]
-        },
-        "vendor": "Boost.ai AS",
-        "vendor_url": "https://boost.ai/"
-      },
-      "braina": {
-        "api_domains": [],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Braina",
-        "pricing": {
-          "model": [
-            "subscription"
-          ],
-          "tiers": [
-            {
-              "id": "lite",
-              "name": "Lite",
-              "type": "individual"
-            },
-            {
-              "id": "pro",
-              "name": "Pro",
-              "type": "individual"
-            },
-            {
-              "id": "pro_plus",
-              "name": "Pro Plus",
-              "type": "individual"
-            },
-            {
-              "id": "pro_ultra",
-              "name": "Pro Ultra",
-              "type": "individual"
-            }
-          ]
-        },
-        "vendor": "Brainasoft",
-        "vendor_url": "https://www.brainasoft.com/"
-      },
-      "caryn-ai": {
-        "api_domains": [
-          "caryn.ai"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "CarynAI",
-        "pricing": {
-          "model": [
-            "subscription"
-          ],
-          "tiers": [
-            {
-              "id": "paid",
-              "name": "Paid",
-              "type": "individual"
-            }
-          ]
-        },
-        "vendor": "BanterAI",
-        "vendor_url": "https://caryn.ai/"
-      },
-      "cbot": {
-        "api_domains": [],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Cbot",
-        "pricing": {
-          "model": [
-            "enterprise"
-          ],
-          "tiers": [
-            {
-              "id": "custom",
-              "name": "Custom",
-              "type": "enterprise"
-            }
-          ]
-        },
-        "vendor": "CBOT Pte Ltd",
-        "vendor_url": "https://www.cbot.ai/"
-      },
-      "celia": {
-        "api_domains": [],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Celia",
-        "pricing": {
-          "model": [
-            "free"
-          ],
-          "tiers": [
-            {
-              "id": "free",
-              "monthly_usd": 0,
-              "name": "Free",
-              "type": "free"
-            }
-          ]
-        },
-        "vendor": "Huawei Technologies Co., Ltd.",
-        "vendor_url": "https://www.huawei.com/"
-      },
-      "chai": {
-        "api_domains": [
-          "chai.ml"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Chai",
-        "pricing": {
-          "model": [
-            "free",
-            "subscription"
-          ],
-          "tiers": [
-            {
-              "id": "free",
-              "monthly_usd": 0,
-              "name": "Free",
-              "type": "free"
-            },
-            {
-              "id": "premium",
-              "name": "Premium",
-              "type": "individual"
-            }
-          ]
-        },
-        "vendor": "Chai Research Corp",
-        "vendor_url": "https://www.chai-research.com/"
-      },
-      "character-ai": {
-        "api_domains": [
-          "character.ai"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Character AI",
-        "pricing": {
-          "model": [
-            "free",
-            "subscription"
-          ],
-          "tiers": [
-            {
-              "id": "free",
-              "monthly_usd": 0,
-              "name": "Free",
-              "type": "free"
-            },
-            {
-              "id": "cai_plus",
-              "name": "c.ai+",
-              "type": "individual"
-            }
-          ]
-        },
-        "vendor": "Character.AI Inc.",
-        "vendor_url": "https://character.ai/"
-      },
-      "chatbot": {
-        "api_domains": [
-          "app.chatbot.com"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "ChatBot",
-        "pricing": {
-          "model": [
-            "free",
-            "subscription",
-            "enterprise"
-          ],
-          "tiers": [
-            {
-              "id": "free",
-              "monthly_usd": 0,
-              "name": "Free",
-              "type": "free"
-            },
-            {
-              "id": "starter",
-              "name": "Starter",
-              "type": "individual"
-            },
-            {
-              "id": "team",
-              "name": "Team",
-              "type": "team"
-            },
-            {
-              "id": "business",
-              "name": "Business",
+              "id": "teams",
+              "monthly_usd": 10,
+              "name": "Canva for Teams",
               "type": "team"
             },
             {
               "id": "enterprise",
-              "name": "Enterprise",
+              "monthly_usd": null,
+              "name": "Canva Enterprise",
               "type": "enterprise"
             }
           ]
         },
-        "vendor": "Chatbot.com Inc.",
-        "vendor_url": "https://www.chatbot.com/"
-      },
-      "chatfuel": {
-        "api_domains": [
-          "dashboard.chatfuel.com"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Chatfuel",
-        "pricing": {
-          "model": [
-            "free",
-            "subscription",
-            "enterprise"
-          ],
-          "tiers": [
-            {
-              "id": "free_trial",
-              "monthly_usd": 0,
-              "name": "Free Trial",
-              "type": "free"
-            },
-            {
-              "id": "business",
-              "name": "Business",
-              "type": "team"
-            },
-            {
-              "id": "enterprise",
-              "name": "Enterprise",
-              "type": "enterprise"
-            }
-          ]
-        },
-        "vendor": "Chatfuel Inc.",
-        "vendor_url": "https://chatfuel.com/"
+        "source_type": "website",
+        "vendor": "Canva",
+        "vendor_url": "https://www.canva.com"
       },
       "chatgpt": {
-        "api_domains": [
+        "$schema": "../schemas/tool-config.schema.json",
+        "category": "ai-chat",
+        "detection": [
+          {
+            "extract": {
+              "user.created": "created",
+              "user.email": "email",
+              "user.id": "id",
+              "user.mfa_enabled": "mfa_flag_enabled",
+              "user.name": "name",
+              "user.phone": "phone_number",
+              "user.picture": "picture"
+            },
+            "id": "user_profile",
+            "match": {
+              "method": "GET",
+              "url": "**/backend-api/me"
+            },
+            "pipeline": [
+              {
+                "encoding": "base64",
+                "op": "decode"
+              },
+              {
+                "format": "json",
+                "op": "parse"
+              }
+            ]
+          },
+          {
+            "extract": {
+              "subscription.active_until": "active_until",
+              "subscription.billing_period": "billing_period",
+              "subscription.currency": "billing_currency",
+              "subscription.id": "id",
+              "subscription.is_delinquent": "is_delinquent",
+              "subscription.plan": "plan_type",
+              "subscription.will_renew": "will_renew"
+            },
+            "id": "subscription",
+            "match": {
+              "method": "GET",
+              "url": "**/backend-api/subscriptions"
+            },
+            "pipeline": [
+              {
+                "encoding": "base64",
+                "op": "decode"
+              },
+              {
+                "format": "json",
+                "op": "parse"
+              }
+            ]
+          },
+          {
+            "extract": {
+              "account.has_previously_paid": "accounts.*.account.has_previously_paid_subscription",
+              "account.id": "accounts.*.account.account_id",
+              "account.is_deactivated": "accounts.*.account.is_deactivated",
+              "account.plan_type": "accounts.*.account.plan_type",
+              "account.structure": "accounts.*.account.structure"
+            },
+            "id": "account_info",
+            "match": {
+              "method": "GET",
+              "url": "**/backend-api/accounts/check/*"
+            },
+            "pipeline": [
+              {
+                "encoding": "base64",
+                "op": "decode"
+              },
+              {
+                "format": "json",
+                "op": "parse"
+              }
+            ]
+          }
+        ],
+        "domains": [
           "chatgpt.com",
           "chat.openai.com"
         ],
-        "category": "ai-chat",
-        "detection": {
-          "subscription": [
-            {
-              "extract": {
-                "plan": "$.accounts.*.account.plan_type"
-              },
-              "type": "api_response",
-              "url": "**/backend-api/accounts/check/**"
-            }
-          ]
-        },
         "features": {
           "chat": {
-            "name": "Chat Conversation",
-            "parser": {
-              "request": {
-                "messages": "messages.({'role': author.role, 'content': $join(content.parts)})",
-                "model": "model"
-              },
-              "response": {
-                "stream": {
-                  "accumulate": {
-                    "content": {
-                      "from": "content",
-                      "op": "concat"
-                    },
-                    "model": {
-                      "from": "model",
-                      "op": "first"
-                    }
-                  },
-                  "finalize": {
-                    "content": "accumulated.content",
-                    "model": "accumulated.model"
-                  },
-                  "format": "sse",
-                  "format_options": {
-                    "prefixes": [
-                      "data: ",
-                      "delta ",
-                      "message "
-                    ],
-                    "skip_values": [
-                      "[DONE]",
-                      "delta_encoding v1",
-                      "delta_encoding v2",
-                      "v1",
-                      "v2"
-                    ]
-                  },
-                  "rules": [
-                    {
-                      "extract": {
-                        "model": "metadata.model_slug"
-                      },
-                      "when": "type = 'server_ste_metadata'"
-                    },
-                    {
-                      "extract": {
-                        "content": "v"
-                      },
-                      "when": "$exists(v) and $not($exists(o)) and $not($exists(p)) and $type(v) = 'string'"
-                    },
-                    {
-                      "extract": {
-                        "content": "v"
-                      },
-                      "when": "o = 'append' and $exists(v) and $type(v) = 'string'"
-                    },
-                    {
-                      "extract": {
-                        "content": "choices[0].delta.content"
-                      },
-                      "when": "$exists(choices[0].delta.content)"
-                    }
-                  ]
-                }
-              }
-            },
-            "patterns": [
+            "description": "Chat with ChatGPT. Uses custom delta encoding SSE format.",
+            "endpoints": [
               {
-                "method": "POST",
-                "url": "**/backend-api/conversation"
+                "extract": {
+                  "request.conversation_mode": "conversation_mode.kind",
+                  "request.message_id": "messages[-1].id",
+                  "request.model": "model",
+                  "request.parent_message_id": "parent_message_id",
+                  "request.prompt": "messages[-1].content.parts[0]",
+                  "request.timezone": "timezone",
+                  "response.content": "$accumulated.content",
+                  "response.conversation_id": "$accumulated.conversation_id",
+                  "response.message_id": "$accumulated.message_id",
+                  "response.model": "$accumulated.model",
+                  "response.title": "$accumulated.title"
+                },
+                "match": {
+                  "method": "POST",
+                  "url": "**/backend-api/f/conversation"
+                },
+                "pipeline": [
+                  {
+                    "apply_to": "request",
+                    "format": "json",
+                    "op": "parse"
+                  },
+                  {
+                    "apply_to": "response",
+                    "op": "stream",
+                    "options": {
+                      "prefixes": [
+                        "data: "
+                      ],
+                      "skip": [
+                        "[DONE]"
+                      ]
+                    },
+                    "transport": "sse"
+                  },
+                  {
+                    "apply_to": "response",
+                    "fields": {
+                      "content": {
+                        "from": "content",
+                        "method": "concat"
+                      },
+                      "conversation_id": {
+                        "from": "conversation_id",
+                        "method": "first"
+                      },
+                      "message_id": {
+                        "from": "message_id",
+                        "method": "first"
+                      },
+                      "model": {
+                        "from": "model",
+                        "method": "first"
+                      },
+                      "title": {
+                        "from": "title",
+                        "method": "last"
+                      }
+                    },
+                    "op": "accumulate",
+                    "rules": [
+                      {
+                        "set": {
+                          "conversation_id": "conversation_id"
+                        },
+                        "when": "type = 'resume_conversation_token'"
+                      },
+                      {
+                        "set": {
+                          "title": "title"
+                        },
+                        "when": "type = 'title_generation'"
+                      },
+                      {
+                        "set": {
+                          "message_id": "v.message.id",
+                          "model": "v.message.metadata.model_slug"
+                        },
+                        "when": "$exists(v.message.author.role) and v.message.author.role = 'assistant' and v.message.content.content_type = 'text'"
+                      },
+                      {
+                        "set": {
+                          "content": "v"
+                        },
+                        "when": "o = 'append' and $exists(v) and $type(v) = 'string'"
+                      },
+                      {
+                        "set": {
+                          "content": "v"
+                        },
+                        "when": "$exists(v) and $type(v) = 'string' and $not($exists(o))"
+                      }
+                    ]
+                  }
+                ],
+                "role": "both"
               }
             ],
+            "name": "Chat",
+            "output": {
+              "include_raw": false,
+              "mode": "extract",
+              "normalize": {
+                "interaction.conversation_id": "$response.conversation_id",
+                "interaction.input.message_id": "$request.message_id",
+                "interaction.input.text": "$request.prompt",
+                "interaction.model": "$response.model",
+                "interaction.output.message_id": "$response.message_id",
+                "interaction.output.text": "$response.content",
+                "interaction.parent_message_id": "$request.parent_message_id",
+                "interaction.title": "$response.title",
+                "interaction.type": "'chat'"
+              },
+              "tag": "ai:chat"
+            },
             "type": "chat"
           }
+        },
+        "id": "chatgpt",
+        "meta": {
+          "docs_url": "https://help.openai.com/en/collections/3742473-chatgpt"
         },
         "name": "ChatGPT",
         "pricing": {
           "model": [
+            "free",
             "subscription"
           ],
           "tiers": [
@@ -45629,737 +45892,318 @@
               "monthly_usd": 25,
               "name": "Team",
               "type": "team"
+            },
+            {
+              "id": "enterprise",
+              "monthly_usd": null,
+              "name": "Enterprise",
+              "type": "enterprise"
             }
           ]
         },
+        "source_type": "website",
         "vendor": "OpenAI",
         "vendor_url": "https://openai.com"
       },
-      "chatsonic": {
-        "api_domains": [
-          "app.writesonic.com"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Chatsonic",
-        "pricing": {
-          "model": [
-            "free",
-            "subscription",
-            "enterprise"
-          ],
-          "tiers": [
-            {
-              "id": "free",
-              "monthly_usd": 0,
-              "name": "Free",
-              "type": "free"
-            },
-            {
-              "id": "individual",
-              "name": "Individual",
-              "type": "individual"
-            },
-            {
-              "id": "individual_plus",
-              "name": "Individual Plus",
-              "type": "individual"
-            },
-            {
-              "id": "business",
-              "name": "Business",
-              "type": "team"
-            },
-            {
-              "id": "enterprise",
-              "name": "Enterprise",
-              "type": "enterprise"
-            }
-          ]
-        },
-        "vendor": "Writesonic Inc.",
-        "vendor_url": "https://writesonic.com/"
-      },
-      "chatspot": {
-        "api_domains": [
-          "app.hubspot.com"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "ChatSpot",
-        "pricing": {
-          "model": [
-            "free",
-            "subscription",
-            "enterprise"
-          ],
-          "tiers": [
-            {
-              "id": "free",
-              "monthly_usd": 0,
-              "name": "Free",
-              "type": "free"
-            },
-            {
-              "id": "starter",
-              "name": "Starter",
-              "type": "individual"
-            },
-            {
-              "id": "professional",
-              "name": "Professional",
-              "type": "team"
-            },
-            {
-              "id": "enterprise",
-              "name": "Enterprise",
-              "type": "enterprise"
-            }
-          ]
-        },
-        "vendor": "HubSpot Inc.",
-        "vendor_url": "https://www.hubspot.com/"
-      },
-      "claude": {
-        "api_domains": [
-          "claude.ai"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Claude",
-        "pricing": {
-          "model": [
-            "free",
-            "subscription",
-            "enterprise"
-          ],
-          "tiers": [
-            {
-              "id": "free",
-              "monthly_usd": 0,
-              "name": "Free",
-              "type": "free"
-            },
-            {
-              "id": "pro",
-              "monthly_usd": 20,
-              "name": "Pro",
-              "type": "individual"
-            },
-            {
-              "id": "max",
-              "name": "Max",
-              "type": "individual"
-            },
-            {
-              "id": "team",
-              "name": "Team",
-              "type": "team"
-            },
-            {
-              "id": "enterprise",
-              "name": "Enterprise",
-              "type": "enterprise"
-            }
-          ]
-        },
-        "vendor": "Anthropic",
-        "vendor_url": "https://www.anthropic.com/"
-      },
-      "cleverbot": {
-        "api_domains": [
-          "www.cleverbot.com"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Cleverbot",
-        "pricing": {
-          "model": [
-            "free",
-            "subscription"
-          ],
-          "tiers": [
-            {
-              "id": "free",
-              "monthly_usd": 0,
-              "name": "Free",
-              "type": "free"
-            },
-            {
-              "id": "premium",
-              "name": "Premium",
-              "type": "individual"
-            }
-          ]
-        },
-        "vendor": "Existor Ltd",
-        "vendor_url": "https://www.cleverbot.com/"
-      },
-      "clova": {
-        "api_domains": [
-          "clova.ai"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Clova",
-        "pricing": {
-          "model": [
-            "free",
-            "subscription",
-            "enterprise"
-          ],
-          "tiers": [
-            {
-              "id": "free",
-              "monthly_usd": 0,
-              "name": "Free",
-              "type": "free"
-            },
-            {
-              "id": "basic",
-              "name": "Basic",
-              "type": "individual"
-            },
-            {
-              "id": "exclusive",
-              "name": "Exclusive",
-              "type": "enterprise"
-            },
-            {
-              "id": "neurocloud",
-              "name": "NeuroCloud",
-              "type": "enterprise"
-            }
-          ]
-        },
-        "vendor": "Naver Corporation",
-        "vendor_url": "https://www.navercorp.com/"
-      },
-      "cognigy": {
-        "api_domains": [
-          "trial.cognigy.ai"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Cognigy",
-        "pricing": {
-          "model": [
-            "enterprise"
-          ],
-          "tiers": [
-            {
-              "id": "starter",
-              "name": "Starter",
-              "type": "enterprise"
-            },
-            {
-              "id": "enterprise",
-              "name": "Enterprise",
-              "type": "enterprise"
-            }
-          ]
-        },
-        "vendor": "Cognigy GmbH",
-        "vendor_url": "https://www.cognigy.com/"
-      },
-      "conversational-cloud": {
-        "api_domains": [
-          "z1.le.liveperson.net"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Conversational Cloud",
-        "pricing": {
-          "model": [
-            "enterprise"
-          ],
-          "tiers": [
-            {
-              "id": "custom",
-              "name": "Custom",
-              "type": "enterprise"
-            }
-          ]
-        },
-        "vendor": "LivePerson Inc.",
-        "vendor_url": "https://www.liveperson.com/"
-      },
-      "copilot": {
-        "api_domains": [
-          "copilot.microsoft.com"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Copilot",
-        "pricing": {
-          "model": [
-            "free",
-            "subscription"
-          ],
-          "tiers": [
-            {
-              "id": "free",
-              "monthly_usd": 0,
-              "name": "Free",
-              "type": "free"
-            },
-            {
-              "id": "pro",
-              "name": "Pro",
-              "type": "individual"
-            },
-            {
-              "id": "m365_copilot",
-              "name": "Microsoft 365 Copilot",
-              "type": "team"
-            },
-            {
-              "id": "security_copilot",
-              "name": "Security Copilot",
-              "type": "enterprise"
-            }
-          ]
-        },
-        "vendor": "Microsoft Corporation",
-        "vendor_url": "https://www.microsoft.com/"
-      },
-      "corover-ai": {
-        "api_domains": [],
-        "category": "ai-chat",
-        "features": {},
-        "name": "CoRover.ai",
-        "pricing": {
-          "model": [
-            "enterprise"
-          ],
-          "tiers": [
-            {
-              "id": "enterprise",
-              "name": "Enterprise",
-              "type": "enterprise"
-            }
-          ]
-        },
-        "vendor": "CoRover Inc.",
-        "vendor_url": "https://corover.ai/"
-      },
-      "decagon": {
-        "api_domains": [],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Decagon",
-        "pricing": {
-          "model": [
-            "usage"
-          ],
-          "tiers": [
-            {
-              "id": "per_conversation",
-              "name": "Per Conversation",
-              "type": "usage"
-            },
-            {
-              "id": "per_resolution",
-              "name": "Per Resolution",
-              "type": "usage"
-            }
-          ]
-        },
-        "vendor": "Decagon Inc.",
-        "vendor_url": "https://decagon.ai/"
-      },
-      "deepseek": {
-        "api_domains": [
-          "chat.deepseek.com"
-        ],
-        "category": "ai-chat",
-        "features": {
-          "chat": {
-            "name": "Chat Conversation",
-            "parser": {
-              "request": {
-                "chat_session_id": "chat_session_id",
-                "prompt": "prompt"
-              },
-              "response": {
-                "stream": {
-                  "accumulate": {
-                    "content": {
-                      "from": "content",
-                      "op": "concat"
-                    }
-                  },
-                  "format": "sse",
-                  "format_options": {
-                    "prefixes": [
-                      "data: "
-                    ]
-                  },
-                  "rules": [
-                    {
-                      "extract": {
-                        "content": "$join(v[p = 'fragments'].v.content)"
-                      },
-                      "when": "o = 'BATCH'"
-                    },
-                    {
-                      "extract": {
-                        "content": "v"
-                      },
-                      "when": "$exists(v) and $type(v) = 'string'"
-                    }
-                  ]
-                }
-              }
-            },
-            "patterns": [
-              {
-                "method": "POST",
-                "url": "**/api/v0/chat/completion"
-              }
-            ],
-            "type": "chat"
-          }
-        },
-        "name": "DeepSeek",
-        "pricing": {
-          "model": [
-            "free",
-            "subscription"
-          ],
-          "tiers": [
-            {
-              "id": "free",
-              "monthly_usd": 0,
-              "name": "Free",
-              "type": "free"
-            }
-          ]
-        },
-        "vendor": "DeepSeek",
-        "vendor_url": "https://deepseek.com"
-      },
-      "devrev": {
-        "api_domains": [
-          "app.devrev.ai"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "DevRev",
-        "pricing": {
-          "model": [
-            "subscription",
-            "enterprise"
-          ],
-          "tiers": [
-            {
-              "id": "starter_build",
-              "name": "Starter Build",
-              "type": "individual"
-            },
-            {
-              "id": "pro_build",
-              "name": "Pro Build",
-              "type": "individual"
-            },
-            {
-              "id": "starter_support",
-              "name": "Starter Support",
-              "type": "individual"
-            },
-            {
-              "id": "pro_support",
-              "name": "Pro Support",
-              "type": "individual"
-            },
-            {
-              "id": "ultimate",
-              "name": "Ultimate",
-              "type": "enterprise"
-            }
-          ]
-        },
-        "vendor": "DevRev Inc.",
-        "vendor_url": "https://devrev.ai/"
-      },
-      "dialogflow": {
-        "api_domains": [
-          "dialogflow.cloud.google.com"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Google Dialogflow",
-        "pricing": {
-          "model": [
-            "free",
-            "usage"
-          ],
-          "tiers": [
-            {
-              "id": "essentials",
-              "monthly_usd": 0,
-              "name": "Essentials",
-              "type": "free"
-            },
-            {
-              "id": "pay_as_you_go",
-              "name": "Pay As You Go",
-              "type": "usage"
-            }
-          ]
-        },
-        "vendor": "Google Cloud",
-        "vendor_url": "https://cloud.google.com/dialogflow"
-      },
-      "doubao": {
-        "api_domains": [
-          "www.doubao.com"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Doubao",
-        "pricing": {
-          "model": [
-            "free",
-            "usage"
-          ],
-          "tiers": [
-            {
-              "id": "free",
-              "monthly_usd": 0,
-              "name": "Free",
-              "type": "free"
-            },
-            {
-              "id": "api_access",
-              "name": "API Access",
-              "type": "usage"
-            }
-          ]
-        },
-        "vendor": "ByteDance Ltd.",
-        "vendor_url": "https://www.bytedance.com/"
-      },
-      "drift": {
-        "api_domains": [
-          "app.drift.com"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Drift",
-        "pricing": {
-          "model": [
-            "enterprise"
-          ],
-          "tiers": [
-            {
-              "id": "premium",
-              "name": "Premium",
-              "type": "enterprise"
-            },
-            {
-              "id": "advanced",
-              "name": "Advanced",
-              "type": "enterprise"
-            },
-            {
-              "id": "enterprise",
-              "name": "Enterprise",
-              "type": "enterprise"
-            }
-          ]
-        },
-        "vendor": "Salesloft",
-        "vendor_url": "https://www.drift.com/"
-      },
-      "druid-ai": {
-        "api_domains": [],
-        "category": "ai-chat",
-        "features": {},
-        "name": "DRUID AI",
-        "pricing": {
-          "model": [
-            "enterprise"
-          ],
-          "tiers": [
-            {
-              "id": "custom",
-              "name": "Custom",
-              "type": "enterprise"
-            }
-          ]
-        },
-        "vendor": "DRUID SA",
-        "vendor_url": "https://www.druidai.com/"
-      },
-      "eliza": {
-        "api_domains": [
-          "www.masswerk.at"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "ELIZA",
-        "pricing": {
-          "model": [
-            "free"
-          ],
-          "tiers": [
-            {
-              "id": "free",
-              "monthly_usd": 0,
-              "name": "Free",
-              "type": "free"
-            }
-          ]
-        },
-        "vendor": "MIT",
-        "vendor_url": "N/A"
-      },
-      "ernie-bot": {
-        "api_domains": [
-          "yiyan.baidu.com"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Ernie Bot",
-        "pricing": {
-          "model": [
-            "free",
-            "usage"
-          ],
-          "tiers": [
-            {
-              "id": "free",
-              "monthly_usd": 0,
-              "name": "Free",
-              "type": "free"
-            },
-            {
-              "id": "enterprise_api",
-              "name": "Enterprise API",
-              "type": "usage"
-            }
-          ]
-        },
-        "vendor": "Baidu Inc.",
-        "vendor_url": "https://www.baidu.com/"
-      },
-      "fin": {
-        "api_domains": [
-          "app.intercom.com"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Fin",
-        "pricing": {
-          "model": [
-            "subscription"
-          ],
-          "tiers": [
-            {
-              "id": "essential",
-              "name": "Essential",
-              "type": "team"
-            },
-            {
-              "id": "advanced",
-              "name": "Advanced",
-              "type": "team"
-            },
-            {
-              "id": "expert",
-              "name": "Expert",
-              "type": "team"
-            }
-          ]
-        },
-        "vendor": "Intercom Inc.",
-        "vendor_url": "https://www.intercom.com/"
-      },
       "gemini": {
-        "api_domains": [
+        "$schema": "../schemas/tool-config.schema.json",
+        "category": "ai-chat",
+        "detection": [
+          {
+            "extract": {
+              "user.id": "[0][0][1][0]",
+              "user.name": "[0][0][1][2][1]"
+            },
+            "id": "user_profile",
+            "match": {
+              "method": "POST",
+              "query": {
+                "rpcids": "o30O0e"
+              },
+              "url": "**/BardChatUi/data/batchexecute*"
+            },
+            "pipeline": [
+              {
+                "encoding": "base64",
+                "op": "decode"
+              },
+              {
+                "format": "json",
+                "nested_parse": "[0][2]",
+                "op": "parse"
+              }
+            ]
+          },
+          {
+            "extract": {
+              "features.enabled": "[0][23]"
+            },
+            "id": "feature_flags",
+            "match": {
+              "method": "POST",
+              "query": {
+                "rpcids": "ESY5D"
+              },
+              "url": "**/BardChatUi/data/batchexecute*"
+            },
+            "pipeline": [
+              {
+                "encoding": "base64",
+                "op": "decode"
+              },
+              {
+                "format": "json",
+                "nested_parse": "[0][2]",
+                "op": "parse"
+              }
+            ]
+          }
+        ],
+        "domains": [
           "gemini.google.com"
         ],
-        "category": "ai-chat",
         "features": {
           "chat": {
-            "name": "Chat Conversation",
-            "parser": {
-              "request": {
-                "conversation_id": "$[2][0]",
-                "encoding": "form",
-                "form_field": "f.req",
-                "preprocess": [
+            "description": "Chat with Gemini. Uses Google's batchexecute streaming format with cumulative response chunks.",
+            "endpoints": [
+              {
+                "extract": {
+                  "request.language": "$parse(f\\.req)[1][1][0]",
+                  "request.prompt": "$parse(f\\.req)[1][0][0]",
+                  "response.content": "$accumulated.content",
+                  "response.conversation_id": "$accumulated.conversation_id",
+                  "response.model": "$accumulated.model",
+                  "response.response_id": "$accumulated.response_id"
+                },
+                "match": {
+                  "method": "POST",
+                  "url": "**/BardChatUi/data/assistant.lamda.BardFrontendService/StreamGenerate"
+                },
+                "pipeline": [
                   {
-                    "op": "json_parse"
+                    "apply_to": "request",
+                    "format": "form",
+                    "op": "parse"
                   },
                   {
-                    "op": "index",
-                    "value": 1
+                    "apply_to": "response",
+                    "encoding": "base64",
+                    "op": "decode"
                   },
                   {
-                    "op": "json_parse"
+                    "apply_to": "response",
+                    "op": "stream",
+                    "options": {
+                      "chunk_format": "length_prefixed",
+                      "prefix_strip": ")]}'"
+                    },
+                    "transport": "chunked"
+                  },
+                  {
+                    "apply_to": "response",
+                    "format": "json",
+                    "nested_parse": "[0][2]",
+                    "op": "parse"
+                  },
+                  {
+                    "apply_to": "response",
+                    "fields": {
+                      "content": {
+                        "from": "content",
+                        "method": "last"
+                      },
+                      "conversation_id": {
+                        "from": "conversation_id",
+                        "method": "first"
+                      },
+                      "model": {
+                        "from": "model",
+                        "method": "last"
+                      },
+                      "response_id": {
+                        "from": "response_id",
+                        "method": "first"
+                      }
+                    },
+                    "op": "accumulate",
+                    "rules": [
+                      {
+                        "set": {
+                          "content": "[4][0][1]"
+                        },
+                        "when": "$exists([4][0][1])"
+                      },
+                      {
+                        "set": {
+                          "conversation_id": "[1][0]"
+                        },
+                        "when": "$exists([1][0])"
+                      },
+                      {
+                        "set": {
+                          "response_id": "[1][1]"
+                        },
+                        "when": "$exists([1][1])"
+                      },
+                      {
+                        "set": {
+                          "model": "[-3]"
+                        },
+                        "when": "$exists([-3]) and $type([-3]) = 'string'"
+                      }
+                    ]
                   }
                 ],
-                "prompt": "$[0][0]"
-              },
-              "response": {
-                "stream": {
-                  "accumulate": {
-                    "content": {
-                      "from": "content",
-                      "op": "last"
-                    },
-                    "conversation_id": {
-                      "from": "conversation_id",
-                      "op": "last"
-                    }
-                  },
-                  "finalize": {
-                    "content": "accumulated.content",
-                    "model": "'gemini'"
-                  },
-                  "format": "length_prefixed",
-                  "format_options": {
-                    "header_strip": ")]}'\\n"
-                  },
-                  "rules": [
-                    {
-                      "extract": {
-                        "content": "$[4][0][1][0]",
-                        "conversation_id": "$[1][0]"
-                      },
-                      "preprocess": [
-                        {
-                          "op": "index",
-                          "value": 0
-                        },
-                        {
-                          "op": "index",
-                          "value": 2
-                        },
-                        {
-                          "op": "json_parse"
-                        }
-                      ],
-                      "when": "$[0][0] = 'wrb.fr'"
-                    }
-                  ]
-                }
-              }
-            },
-            "patterns": [
-              {
-                "method": "POST",
-                "url": "**/_/BardChatUi/data/assistant.lamda.BardFrontendService/StreamGenerate"
+                "role": "both"
               }
             ],
+            "name": "Chat",
+            "output": {
+              "include_raw": false,
+              "mode": "extract",
+              "normalize": {
+                "interaction.conversation_id": "$response.conversation_id",
+                "interaction.input.language": "$request.language",
+                "interaction.input.text": "$request.prompt",
+                "interaction.model": "$response.model",
+                "interaction.output.text": "$response.content",
+                "interaction.response_id": "$response.response_id",
+                "interaction.type": "'chat'"
+              },
+              "tag": "ai:chat"
+            },
             "type": "chat"
+          },
+          "image_generation": {
+            "description": "Generate images with Gemini. Uses data_analysis_tool internally, returns multiple image variants.",
+            "endpoints": [
+              {
+                "extract": {
+                  "request.prompt": "$parse(f\\.req)[1][0][0]",
+                  "response.conversation_id": "$accumulated.conversation_id",
+                  "response.image_count": "$count($accumulated.images)",
+                  "response.images": "$accumulated.images[*][3] ? $accumulated.images[*][3] : $accumulated.images[*][6]",
+                  "response.response_id": "$accumulated.response_id",
+                  "response.tool": "$accumulated.tool_name"
+                },
+                "match": {
+                  "method": "POST",
+                  "url": "**/BardChatUi/data/assistant.lamda.BardFrontendService/StreamGenerate"
+                },
+                "pipeline": [
+                  {
+                    "apply_to": "request",
+                    "format": "form",
+                    "op": "parse"
+                  },
+                  {
+                    "apply_to": "response",
+                    "encoding": "base64",
+                    "op": "decode"
+                  },
+                  {
+                    "apply_to": "response",
+                    "op": "stream",
+                    "options": {
+                      "chunk_format": "length_prefixed",
+                      "prefix_strip": ")]}'"
+                    },
+                    "transport": "chunked"
+                  },
+                  {
+                    "apply_to": "response",
+                    "format": "json",
+                    "nested_parse": "[0][2]",
+                    "op": "parse"
+                  },
+                  {
+                    "apply_to": "response",
+                    "fields": {
+                      "conversation_id": {
+                        "from": "conversation_id",
+                        "method": "first"
+                      },
+                      "images": {
+                        "from": "images",
+                        "method": "last"
+                      },
+                      "response_id": {
+                        "from": "response_id",
+                        "method": "first"
+                      },
+                      "tool_name": {
+                        "from": "tool_name",
+                        "method": "first"
+                      },
+                      "tool_status": {
+                        "from": "tool_status",
+                        "method": "last"
+                      }
+                    },
+                    "op": "accumulate",
+                    "rules": [
+                      {
+                        "set": {
+                          "conversation_id": "[1][0]"
+                        },
+                        "when": "$exists([1][0])"
+                      },
+                      {
+                        "set": {
+                          "response_id": "[1][1]"
+                        },
+                        "when": "$exists([1][1])"
+                      },
+                      {
+                        "set": {
+                          "tool_name": "[6][1][0]"
+                        },
+                        "when": "$exists([6][1][0])"
+                      },
+                      {
+                        "set": {
+                          "tool_status": "[6][1][2][2]"
+                        },
+                        "when": "$exists([6][1][2][2])"
+                      },
+                      {
+                        "set": {
+                          "images": "[4][0][12][7][0][0]"
+                        },
+                        "when": "$exists([4][0][12][7][0][0]) and $count([4][0][12][7][0][0]) > 0"
+                      }
+                    ]
+                  }
+                ],
+                "role": "both"
+              }
+            ],
+            "name": "Image Generation",
+            "output": {
+              "include_raw": false,
+              "mode": "extract",
+              "normalize": {
+                "interaction.conversation_id": "$response.conversation_id",
+                "interaction.input.text": "$request.prompt",
+                "interaction.output.image_count": "$response.image_count",
+                "interaction.output.images": "$response.images",
+                "interaction.response_id": "$response.response_id",
+                "interaction.tool": "$response.tool",
+                "interaction.type": "'image_generation'"
+              },
+              "tag": "ai:image_generation"
+            },
+            "type": "asset_creation"
           }
+        },
+        "id": "gemini",
+        "meta": {
+          "docs_url": "https://support.google.com/gemini"
         },
         "name": "Gemini",
         "pricing": {
           "model": [
+            "free",
             "subscription"
           ],
           "tiers": [
@@ -46372,1180 +46216,209 @@
             {
               "id": "advanced",
               "monthly_usd": 20,
-              "name": "Advanced",
-              "type": "individual"
-            }
-          ]
-        },
-        "vendor": "Google",
-        "vendor_url": "https://google.com"
-      },
-      "genesys": {
-        "api_domains": [
-          "apps.mypurecloud.com"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Genesys",
-        "pricing": {
-          "model": [
-            "enterprise"
-          ],
-          "tiers": [
-            {
-              "id": "cloud_cx_1",
-              "name": "Cloud CX 1",
-              "type": "enterprise"
-            },
-            {
-              "id": "cloud_cx_2",
-              "name": "Cloud CX 2",
-              "type": "enterprise"
-            },
-            {
-              "id": "cloud_cx_3",
-              "name": "Cloud CX 3",
-              "type": "enterprise"
-            }
-          ]
-        },
-        "vendor": "Genesys Cloud Services Inc.",
-        "vendor_url": "https://www.genesys.com/"
-      },
-      "gigachat": {
-        "api_domains": [
-          "giga.chat"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "GigaChat",
-        "pricing": {
-          "model": [
-            "free",
-            "subscription"
-          ],
-          "tiers": [
-            {
-              "id": "free",
-              "monthly_usd": 0,
-              "name": "Free",
-              "type": "free"
-            },
-            {
-              "id": "lite",
-              "name": "Lite",
-              "type": "individual"
-            },
-            {
-              "id": "pro",
-              "name": "Pro",
-              "type": "individual"
-            },
-            {
-              "id": "max",
-              "name": "Max",
-              "type": "individual"
-            }
-          ]
-        },
-        "vendor": "Sberbank (Sber)",
-        "vendor_url": "https://www.sber.ru/"
-      },
-      "glm-4-plus": {
-        "api_domains": [
-          "chatglm.cn"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "GLM-4 Plus",
-        "pricing": {
-          "model": [
-            "free",
-            "usage"
-          ],
-          "tiers": [
-            {
-              "id": "free",
-              "monthly_usd": 0,
-              "name": "Free",
-              "type": "free"
-            },
-            {
-              "id": "api_access",
-              "name": "API Access",
-              "type": "usage"
-            }
-          ]
-        },
-        "vendor": "Zhipu AI",
-        "vendor_url": "https://www.zhipuai.cn/"
-      },
-      "google-assistant": {
-        "api_domains": [],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Google Assistant",
-        "pricing": {
-          "model": [
-            "free"
-          ],
-          "tiers": [
-            {
-              "id": "free",
-              "monthly_usd": 0,
-              "name": "Free",
-              "type": "free"
-            }
-          ]
-        },
-        "vendor": "Google LLC",
-        "vendor_url": "https://assistant.google.com/"
-      },
-      "google-gemini": {
-        "api_domains": [
-          "gemini.google.com"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Google Gemini",
-        "pricing": {
-          "model": [
-            "free",
-            "subscription",
-            "enterprise"
-          ],
-          "tiers": [
-            {
-              "id": "free",
-              "monthly_usd": 0,
-              "name": "Free",
-              "type": "free"
-            },
-            {
-              "id": "gemini_advanced",
               "name": "Gemini Advanced",
               "type": "individual"
             },
             {
               "id": "business",
-              "name": "Business",
+              "monthly_usd": 20,
+              "name": "Gemini Business",
               "type": "team"
             },
             {
               "id": "enterprise",
-              "name": "Enterprise",
-              "type": "enterprise"
-            }
-          ]
-        },
-        "vendor": "Google LLC",
-        "vendor_url": "https://www.google.com/"
-      },
-      "grok": {
-        "api_domains": [
-          "grok.com",
-          "grok.x.ai"
-        ],
-        "category": "ai-chat",
-        "features": {
-          "chat": {
-            "name": "Chat Conversation",
-            "parser": {
-              "request": {
-                "model": "modelName",
-                "prompt": "message"
-              },
-              "response": {
-                "stream": {
-                  "accumulate": {
-                    "conversation_id": {
-                      "from": "conversation_id",
-                      "op": "first"
-                    },
-                    "final_content": {
-                      "from": "final_content",
-                      "op": "last"
-                    },
-                    "model": {
-                      "from": "model",
-                      "op": "first"
-                    },
-                    "tokens": {
-                      "from": "token",
-                      "op": "concat"
-                    }
-                  },
-                  "finalize": {
-                    "content": "accumulated.final_content ? accumulated.final_content : accumulated.tokens",
-                    "model": "accumulated.model"
-                  },
-                  "format": "ndjson",
-                  "format_options": {
-                    "delimiter": "}{"
-                  },
-                  "rules": [
-                    {
-                      "extract": {
-                        "final_content": "result.modelResponse.message",
-                        "model": "result.modelResponse.model",
-                        "response_id": "result.modelResponse.responseId"
-                      },
-                      "when": "$exists(result.modelResponse)"
-                    },
-                    {
-                      "extract": {
-                        "token": "result.token"
-                      },
-                      "when": "$exists(result.token)"
-                    },
-                    {
-                      "extract": {
-                        "conversation_id": "result.conversation.conversationId"
-                      },
-                      "when": "$exists(result.conversation.conversationId)"
-                    }
-                  ]
-                }
-              }
-            },
-            "patterns": [
-              {
-                "method": "POST",
-                "url": "**/rest/app-chat/conversations/new"
-              },
-              {
-                "method": "POST",
-                "url": "**/rest/app-chat/conversations/**/responses"
-              }
-            ],
-            "type": "chat"
-          }
-        },
-        "name": "Grok",
-        "pricing": {
-          "model": [
-            "free",
-            "subscription"
-          ],
-          "tiers": [
-            {
-              "id": "free",
-              "monthly_usd": 0,
-              "name": "Free",
-              "type": "free"
-            },
-            {
-              "id": "premium",
-              "monthly_usd": 8,
-              "name": "Premium",
-              "type": "individual"
-            },
-            {
-              "id": "premium_plus",
-              "monthly_usd": 22,
-              "name": "Premium+",
-              "type": "individual"
-            },
-            {
-              "id": "superuser",
               "monthly_usd": 30,
-              "name": "SuperUser",
-              "type": "individual"
-            }
-          ]
-        },
-        "vendor": "xAI",
-        "vendor_url": "https://x.ai"
-      },
-      "haptik": {
-        "api_domains": [],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Haptik.ai",
-        "pricing": {
-          "model": [
-            "subscription",
-            "enterprise"
-          ],
-          "tiers": [
-            {
-              "id": "smb",
-              "name": "SMB",
-              "type": "team"
-            },
-            {
-              "id": "enterprise",
-              "name": "Enterprise",
+              "name": "Gemini Enterprise",
               "type": "enterprise"
             }
           ]
         },
-        "vendor": "Reliance Jio Haptik",
-        "vendor_url": "https://www.haptik.ai/"
-      },
-      "huggingchat": {
-        "api_domains": [
-          "huggingface.co"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "HuggingChat",
-        "pricing": {
-          "model": [
-            "free",
-            "subscription",
-            "enterprise"
-          ],
-          "tiers": [
-            {
-              "id": "free",
-              "monthly_usd": 0,
-              "name": "Free",
-              "type": "free"
-            },
-            {
-              "id": "pro",
-              "name": "Pro",
-              "type": "individual"
-            },
-            {
-              "id": "enterprise_hub",
-              "name": "Enterprise Hub",
-              "type": "enterprise"
-            }
-          ]
-        },
-        "vendor": "Hugging Face Inc.",
-        "vendor_url": "https://huggingface.co/"
-      },
-      "ibm-watsonx": {
-        "api_domains": [
-          "cloud.ibm.com"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "IBM Watsonx Assistant",
-        "pricing": {
-          "model": [
-            "free",
-            "subscription",
-            "enterprise"
-          ],
-          "tiers": [
-            {
-              "id": "lite",
-              "monthly_usd": 0,
-              "name": "Lite",
-              "type": "free"
-            },
-            {
-              "id": "plus",
-              "name": "Plus",
-              "type": "individual"
-            },
-            {
-              "id": "enterprise",
-              "name": "Enterprise",
-              "type": "enterprise"
-            }
-          ]
-        },
-        "vendor": "IBM Corporation",
-        "vendor_url": "https://www.ibm.com/products/watsonx-assistant"
-      },
-      "inbenta": {
-        "api_domains": [],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Inbenta",
-        "pricing": {
-          "model": [
-            "usage"
-          ],
-          "tiers": [
-            {
-              "id": "consumption",
-              "name": "Consumption Based",
-              "type": "usage"
-            }
-          ]
-        },
-        "vendor": "Inbenta Inc.",
-        "vendor_url": "https://www.inbenta.com/"
-      },
-      "jabberwacky": {
-        "api_domains": [
-          "www.jabberwacky.com"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Jabberwacky",
-        "pricing": {
-          "model": [
-            "free"
-          ],
-          "tiers": [
-            {
-              "id": "free",
-              "monthly_usd": 0,
-              "name": "Free",
-              "type": "free"
-            }
-          ]
-        },
-        "vendor": "Rollo Carpenter",
-        "vendor_url": "https://www.jabberwacky.com/"
-      },
-      "jasper-chat": {
-        "api_domains": [
-          "app.jasper.ai"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Jasper Chat",
-        "pricing": {
-          "model": [
-            "subscription",
-            "enterprise"
-          ],
-          "tiers": [
-            {
-              "id": "creator",
-              "name": "Creator",
-              "type": "individual"
-            },
-            {
-              "id": "pro",
-              "name": "Pro",
-              "type": "individual"
-            },
-            {
-              "id": "business",
-              "name": "Business",
-              "type": "enterprise"
-            }
-          ]
-        },
-        "vendor": "Jasper AI Inc.",
-        "vendor_url": "https://www.jasper.ai/"
-      },
-      "khanmigo": {
-        "api_domains": [
-          "www.khanmigo.ai"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Khanmigo",
-        "pricing": {
-          "model": [
-            "free",
-            "subscription",
-            "enterprise"
-          ],
-          "tiers": [
-            {
-              "id": "free",
-              "monthly_usd": 0,
-              "name": "Free",
-              "type": "free"
-            },
-            {
-              "id": "learner",
-              "name": "Learner",
-              "type": "individual"
-            },
-            {
-              "id": "district",
-              "name": "District",
-              "type": "enterprise"
-            }
-          ]
-        },
-        "vendor": "Khan Academy",
-        "vendor_url": "https://www.khanacademy.org/"
-      },
-      "kimi": {
-        "api_domains": [
-          "kimi.moonshot.cn"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Kimi",
-        "pricing": {
-          "model": [
-            "free",
-            "subscription",
-            "usage"
-          ],
-          "tiers": [
-            {
-              "id": "free",
-              "monthly_usd": 0,
-              "name": "Free",
-              "type": "free"
-            },
-            {
-              "id": "priority",
-              "name": "Priority",
-              "type": "individual"
-            },
-            {
-              "id": "api_access",
-              "name": "API Access",
-              "type": "usage"
-            }
-          ]
-        },
-        "vendor": "Moonshot AI",
-        "vendor_url": "https://www.moonshot.ai/"
-      },
-      "kommunicate": {
-        "api_domains": [
-          "dashboard.kommunicate.io"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Kommunicate",
-        "pricing": {
-          "model": [
-            "subscription",
-            "enterprise"
-          ],
-          "tiers": [
-            {
-              "id": "lite",
-              "name": "Lite",
-              "type": "individual"
-            },
-            {
-              "id": "advanced",
-              "name": "Advanced",
-              "type": "team"
-            },
-            {
-              "id": "enterprise",
-              "name": "Enterprise",
-              "type": "enterprise"
-            }
-          ]
-        },
-        "vendor": "Kommunicate Inc.",
-        "vendor_url": "https://www.kommunicate.io/"
-      },
-      "kore-ai": {
-        "api_domains": [
-          "bots.kore.ai"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Kore.ai",
-        "pricing": {
-          "model": [
-            "enterprise"
-          ],
-          "tiers": [
-            {
-              "id": "standard",
-              "name": "Standard",
-              "type": "enterprise"
-            },
-            {
-              "id": "enterprise",
-              "name": "Enterprise",
-              "type": "enterprise"
-            }
-          ]
-        },
-        "vendor": "Kore.ai Inc.",
-        "vendor_url": "https://kore.ai/"
-      },
-      "kuki": {
-        "api_domains": [
-          "www.kuki.ai"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Kuki",
-        "pricing": {
-          "model": [
-            "free"
-          ],
-          "tiers": [
-            {
-              "id": "free",
-              "monthly_usd": 0,
-              "name": "Free",
-              "type": "free"
-            }
-          ]
-        },
-        "vendor": "Pandorabots Inc.",
-        "vendor_url": "https://www.pandorabots.com/"
-      },
-      "laiye": {
-        "api_domains": [],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Laiye",
-        "pricing": {
-          "model": [
-            "enterprise"
-          ],
-          "tiers": [
-            {
-              "id": "custom",
-              "name": "Custom",
-              "type": "enterprise"
-            }
-          ]
-        },
-        "vendor": "Laiye Technology",
-        "vendor_url": "https://www.laiye.com/"
-      },
-      "le-chat": {
-        "api_domains": [
-          "chat.mistral.ai"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Le Chat",
-        "pricing": {
-          "model": [
-            "free",
-            "subscription",
-            "enterprise"
-          ],
-          "tiers": [
-            {
-              "id": "free",
-              "monthly_usd": 0,
-              "name": "Free",
-              "type": "free"
-            },
-            {
-              "id": "pro",
-              "name": "Pro",
-              "type": "individual"
-            },
-            {
-              "id": "team",
-              "name": "Team",
-              "type": "team"
-            },
-            {
-              "id": "enterprise",
-              "name": "Enterprise",
-              "type": "enterprise"
-            }
-          ]
-        },
-        "vendor": "Mistral AI",
-        "vendor_url": "https://mistral.ai/"
-      },
-      "leena-ai": {
-        "api_domains": [],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Leena.ai",
-        "pricing": {
-          "model": [
-            "enterprise"
-          ],
-          "tiers": [
-            {
-              "id": "enterprise",
-              "name": "Enterprise",
-              "type": "enterprise"
-            }
-          ]
-        },
-        "vendor": "Leena AI Inc.",
-        "vendor_url": "https://leena.ai/"
-      },
-      "lenny": {
-        "api_domains": [],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Lenny",
-        "pricing": {
-          "model": [
-            "free"
-          ],
-          "tiers": [
-            {
-              "id": "free",
-              "monthly_usd": 0,
-              "name": "Free",
-              "type": "free"
-            }
-          ]
-        },
-        "vendor": "Independent Open Source Project",
-        "vendor_url": "https://lennylp.com/"
-      },
-      "leo": {
-        "api_domains": [],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Leo",
-        "pricing": {
-          "model": [
-            "free",
-            "subscription"
-          ],
-          "tiers": [
-            {
-              "id": "free",
-              "monthly_usd": 0,
-              "name": "Free",
-              "type": "free"
-            },
-            {
-              "id": "premium",
-              "name": "Premium",
-              "type": "individual"
-            }
-          ]
-        },
-        "vendor": "Brave Software Inc.",
-        "vendor_url": "https://brave.com/"
-      },
-      "liveperson": {
-        "api_domains": [
-          "z1.le.liveperson.net"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "LivePerson",
-        "pricing": {
-          "model": [
-            "enterprise"
-          ],
-          "tiers": [
-            {
-              "id": "custom",
-              "name": "Custom",
-              "type": "enterprise"
-            }
-          ]
-        },
-        "vendor": "LivePerson Inc.",
-        "vendor_url": "https://www.liveperson.com/"
-      },
-      "llama2-ai": {
-        "api_domains": [
-          "www.llama2.ai"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Llama2.ai",
-        "pricing": {
-          "model": [
-            "free",
-            "usage"
-          ],
-          "tiers": [
-            {
-              "id": "free",
-              "monthly_usd": 0,
-              "name": "Free",
-              "type": "free"
-            },
-            {
-              "id": "api_access",
-              "name": "API Access",
-              "type": "usage"
-            }
-          ]
-        },
-        "vendor": "Meta AI (Open Source)",
-        "vendor_url": "https://ai.meta.com/"
-      },
-      "manus-ai": {
-        "api_domains": [
-          "manus.im"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Manus.ai",
-        "pricing": {
-          "model": [
-            "subscription"
-          ],
-          "tiers": [
-            {
-              "id": "basic",
-              "name": "Basic",
-              "type": "individual"
-            },
-            {
-              "id": "plus",
-              "name": "Plus",
-              "type": "individual"
-            },
-            {
-              "id": "pro",
-              "name": "Pro",
-              "type": "individual"
-            }
-          ]
-        },
-        "vendor": "Butterfly Effect (Manus AI)",
-        "vendor_url": "https://manus.im/"
-      },
-      "megahal": {
-        "api_domains": [],
-        "category": "ai-chat",
-        "features": {},
-        "name": "MegaHAL",
-        "pricing": {
-          "model": [
-            "free"
-          ],
-          "tiers": [
-            {
-              "id": "free",
-              "monthly_usd": 0,
-              "name": "Free",
-              "type": "free"
-            }
-          ]
-        },
-        "vendor": "Open Source",
-        "vendor_url": "N/A"
-      },
-      "meon-chatbot": {
-        "api_domains": [],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Meon Chatbot",
-        "pricing": {
-          "model": [
-            "subscription"
-          ],
-          "tiers": [
-            {
-              "id": "basic",
-              "name": "Basic",
-              "type": "individual"
-            },
-            {
-              "id": "standard",
-              "name": "Standard",
-              "type": "individual"
-            },
-            {
-              "id": "premium",
-              "name": "Premium",
-              "type": "individual"
-            }
-          ]
-        },
-        "vendor": "Meon Technologies",
-        "vendor_url": "https://meon.co.in/"
-      },
-      "merlin-ai": {
-        "api_domains": [
-          "app.getmerlin.in"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Merlin AI",
-        "pricing": {
-          "model": [
-            "free",
-            "subscription"
-          ],
-          "tiers": [
-            {
-              "id": "free",
-              "monthly_usd": 0,
-              "name": "Free",
-              "type": "free"
-            },
-            {
-              "id": "pro",
-              "name": "Pro",
-              "type": "individual"
-            },
-            {
-              "id": "teams",
-              "name": "Teams",
-              "type": "team"
-            }
-          ]
-        },
-        "vendor": "Merlin AI (Foyer Tech)",
-        "vendor_url": "https://www.getmerlin.in/"
-      },
-      "meta-ai": {
-        "api_domains": [
-          "www.meta.ai"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Meta AI",
-        "pricing": {
-          "model": [
-            "free",
-            "subscription"
-          ],
-          "tiers": [
-            {
-              "id": "free",
-              "monthly_usd": 0,
-              "name": "Free",
-              "type": "free"
-            },
-            {
-              "id": "premium",
-              "name": "Premium",
-              "type": "individual"
-            }
-          ]
-        },
-        "vendor": "Meta Platforms Inc.",
-        "vendor_url": "https://about.meta.com/"
-      },
-      "mitsuku": {
-        "api_domains": [
-          "www.kuki.ai"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Mitsuku",
-        "pricing": {
-          "model": [
-            "free"
-          ],
-          "tiers": [
-            {
-              "id": "free",
-              "monthly_usd": 0,
-              "name": "Free",
-              "type": "free"
-            }
-          ]
-        },
-        "vendor": "Pandorabots Inc.",
-        "vendor_url": "https://www.pandorabots.com/"
-      },
-      "moveworks": {
-        "api_domains": [],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Moveworks",
-        "pricing": {
-          "model": [
-            "enterprise"
-          ],
-          "tiers": [
-            {
-              "id": "custom",
-              "name": "Custom",
-              "type": "enterprise"
-            }
-          ]
-        },
-        "vendor": "Moveworks Inc.",
-        "vendor_url": "https://www.moveworks.com/"
-      },
-      "mycroft": {
-        "api_domains": [],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Mycroft",
-        "pricing": {
-          "model": [
-            "free",
-            "subscription"
-          ],
-          "tiers": [
-            {
-              "id": "free",
-              "monthly_usd": 0,
-              "name": "Free",
-              "type": "free"
-            },
-            {
-              "id": "premium",
-              "name": "Premium",
-              "type": "individual"
-            }
-          ]
-        },
-        "vendor": "Mycroft AI Inc.",
-        "vendor_url": "https://mycroft.ai/"
-      },
-      "omilia": {
-        "api_domains": [],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Omilia",
-        "pricing": {
-          "model": [
-            "enterprise"
-          ],
-          "tiers": [
-            {
-              "id": "custom",
-              "name": "Custom",
-              "type": "enterprise"
-            }
-          ]
-        },
-        "vendor": "Omilia Ltd.",
-        "vendor_url": "https://omilia.com/"
-      },
-      "onereach-ai": {
-        "api_domains": [],
-        "category": "ai-chat",
-        "features": {},
-        "name": "OneReach.ai",
-        "pricing": {
-          "model": [
-            "subscription",
-            "enterprise"
-          ],
-          "tiers": [
-            {
-              "id": "starter",
-              "name": "Starter",
-              "type": "individual"
-            },
-            {
-              "id": "professional",
-              "name": "Professional",
-              "type": "team"
-            },
-            {
-              "id": "enterprise",
-              "name": "Enterprise",
-              "type": "enterprise"
-            }
-          ]
-        },
-        "vendor": "OneReach.ai Inc.",
-        "vendor_url": "https://onereach.ai/"
-      },
-      "oracle": {
-        "api_domains": [
-          "cloud.oracle.com"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Oracle",
-        "pricing": {
-          "model": [
-            "usage",
-            "subscription"
-          ],
-          "tiers": [
-            {
-              "id": "universal_credits",
-              "name": "Universal Credits",
-              "type": "usage"
-            },
-            {
-              "id": "subscription",
-              "name": "Subscription",
-              "type": "individual"
-            }
-          ]
-        },
-        "vendor": "Oracle Corporation",
-        "vendor_url": "https://www.oracle.com/"
-      },
-      "parloa": {
-        "api_domains": [],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Parloa",
-        "pricing": {
-          "model": [
-            "enterprise"
-          ],
-          "tiers": [
-            {
-              "id": "custom",
-              "name": "Custom",
-              "type": "enterprise"
-            }
-          ]
-        },
-        "vendor": "Parloa GmbH",
-        "vendor_url": "https://www.parloa.com/"
+        "source_type": "website",
+        "vendor": "Google",
+        "vendor_url": "https://gemini.google.com"
       },
       "perplexity": {
-        "api_domains": [
-          "www.perplexity.ai",
-          "perplexity.ai"
-        ],
-        "category": "ai-chat",
-        "features": {
-          "chat": {
-            "name": "Chat Search",
-            "parser": {
-              "request": {
-                "model": "params.model_preference",
-                "prompt": "query_str",
-                "search_focus": "params.search_focus"
-              },
-              "response": {
-                "stream": {
-                  "accumulate": {
-                    "content": {
-                      "from": "content",
-                      "op": "concat"
-                    },
-                    "model": {
-                      "from": "model",
-                      "op": "first"
-                    }
-                  },
-                  "finalize": {
-                    "content": "accumulated.content",
-                    "model": "accumulated.model"
-                  },
-                  "format": "sse",
-                  "format_options": {
-                    "prefixes": [
-                      "data: "
-                    ]
-                  },
-                  "rules": [
-                    {
-                      "extract": {
-                        "model": "display_model"
-                      },
-                      "when": "$exists(display_model)"
-                    },
-                    {
-                      "extract": {
-                        "text_completed": "true"
-                      },
-                      "when": "$exists(text_completed) and text_completed = true"
-                    },
-                    {
-                      "extract": {
-                        "content": "$_perplexity_blocks"
-                      },
-                      "when": "$exists(blocks[0])"
-                    }
-                  ]
-                }
-              }
+        "$schema": "../schemas/tool-config.schema.json",
+        "category": "search",
+        "detection": [
+          {
+            "extract": {
+              "limits.create": "create_limit",
+              "limits.daily_attachments": "connector_limits.daily_attachment_limit",
+              "limits.max_file_size_mb": "connector_limits.max_file_size_mb",
+              "limits.max_files": "max_files_per_user",
+              "limits.pages": "pages_limit",
+              "limits.uploads": "upload_limit"
             },
-            "patterns": [
+            "id": "user_settings",
+            "match": {
+              "method": "GET",
+              "url": "**/rest/user/settings"
+            },
+            "pipeline": [
               {
-                "method": "POST",
-                "url": "**/rest/sse/perplexity_ask"
+                "format": "json",
+                "op": "parse"
+              }
+            ]
+          }
+        ],
+        "domains": [
+          "perplexity.ai",
+          "www.perplexity.ai"
+        ],
+        "features": {
+          "search": {
+            "description": "AI-powered search with citations. Uses SSE with JSON diff/patch format for streaming.",
+            "endpoints": [
+              {
+                "extract": {
+                  "request.message_id": "params.frontend_uuid",
+                  "request.mode": "params.mode",
+                  "request.model": "params.model_preference",
+                  "request.prompt": "query_str",
+                  "request.search_focus": "params.search_focus",
+                  "request.thread_id": "params.frontend_context_uuid",
+                  "response.content": "$accumulated.answer ? $accumulated.answer : $accumulated.content",
+                  "response.message_id": "$accumulated.uuid",
+                  "response.mode": "$accumulated.mode",
+                  "response.model": "$accumulated.model",
+                  "response.thread_id": "$accumulated.context_uuid",
+                  "response.thread_slug": "$accumulated.thread_slug"
+                },
+                "match": {
+                  "method": "POST",
+                  "url": "**/rest/sse/perplexity_ask"
+                },
+                "pipeline": [
+                  {
+                    "apply_to": "request",
+                    "format": "json",
+                    "op": "parse"
+                  },
+                  {
+                    "apply_to": "response",
+                    "op": "stream",
+                    "options": {
+                      "prefixes": [
+                        "data: "
+                      ]
+                    },
+                    "transport": "sse"
+                  },
+                  {
+                    "apply_to": "response",
+                    "fields": {
+                      "answer": {
+                        "from": "answer",
+                        "method": "last"
+                      },
+                      "content": {
+                        "from": "content",
+                        "method": "concat"
+                      },
+                      "context_uuid": {
+                        "from": "context_uuid",
+                        "method": "first"
+                      },
+                      "mode": {
+                        "from": "mode",
+                        "method": "last"
+                      },
+                      "model": {
+                        "from": "model",
+                        "method": "first"
+                      },
+                      "thread_slug": {
+                        "from": "thread_slug",
+                        "method": "first"
+                      },
+                      "uuid": {
+                        "from": "uuid",
+                        "method": "first"
+                      }
+                    },
+                    "op": "accumulate",
+                    "rules": [
+                      {
+                        "set": {
+                          "uuid": "uuid"
+                        },
+                        "when": "$exists(uuid)"
+                      },
+                      {
+                        "set": {
+                          "context_uuid": "context_uuid"
+                        },
+                        "when": "$exists(context_uuid)"
+                      },
+                      {
+                        "set": {
+                          "model": "display_model"
+                        },
+                        "when": "$exists(display_model)"
+                      },
+                      {
+                        "set": {
+                          "mode": "mode"
+                        },
+                        "when": "$exists(mode)"
+                      },
+                      {
+                        "set": {
+                          "thread_slug": "thread_url_slug"
+                        },
+                        "when": "$exists(thread_url_slug)"
+                      },
+                      {
+                        "set": {
+                          "content": "$join(blocks[intended_usage='ask_text_0_markdown'].diff_block.patches[op='replace'].value.chunks, '')"
+                        },
+                        "when": "$exists(blocks) and blocks[intended_usage='ask_text_0_markdown'].diff_block.patches[op='replace'].value.chunks"
+                      },
+                      {
+                        "set": {
+                          "content": "blocks[intended_usage='ask_text_0_markdown'].diff_block.patches[op='add'].value"
+                        },
+                        "when": "$exists(blocks) and blocks[intended_usage='ask_text_0_markdown'].diff_block.patches[op='add'].value and $type(blocks[intended_usage='ask_text_0_markdown'].diff_block.patches[op='add'].value) = 'string'"
+                      },
+                      {
+                        "set": {
+                          "answer": "blocks[intended_usage='ask_text_0_markdown'].markdown_block.answer"
+                        },
+                        "when": "final_sse_message = true and $exists(blocks) and blocks[intended_usage='ask_text_0_markdown'].markdown_block.answer"
+                      }
+                    ]
+                  }
+                ],
+                "role": "both"
               }
             ],
+            "name": "AI Search",
+            "output": {
+              "include_raw": false,
+              "mode": "extract",
+              "normalize": {
+                "interaction.input.message_id": "$request.message_id",
+                "interaction.input.text": "$request.prompt",
+                "interaction.mode": "$response.mode",
+                "interaction.model": "$response.model",
+                "interaction.output.message_id": "$response.message_id",
+                "interaction.output.text": "$response.content",
+                "interaction.search_focus": "$request.search_focus",
+                "interaction.thread_id": "$response.thread_id",
+                "interaction.type": "'search'"
+              },
+              "tag": "ai:search"
+            },
             "type": "chat"
           }
         },
-        "name": "Perplexity AI",
+        "id": "perplexity",
+        "meta": {
+          "docs_url": "https://www.perplexity.ai/hub"
+        },
+        "name": "Perplexity",
         "pricing": {
           "model": [
             "free",
@@ -47563,601 +46436,182 @@
               "monthly_usd": 20,
               "name": "Pro",
               "type": "individual"
+            },
+            {
+              "id": "enterprise",
+              "monthly_usd": null,
+              "name": "Enterprise",
+              "type": "enterprise"
             }
           ]
         },
+        "source_type": "website",
         "vendor": "Perplexity AI",
         "vendor_url": "https://perplexity.ai"
       },
-      "personal-ai": {
-        "api_domains": [
-          "app.personal.ai"
+      "replit": {
+        "$schema": "../schemas/tool-config.schema.json",
+        "category": "agent",
+        "detection": [
+          {
+            "extract": {
+              "subscription.has_ai_pro": "hasReplitAiPro",
+              "subscription.is_enterprise": "isEnterprise",
+              "subscription.membership": "membership",
+              "subscription.plan_name": "$parseJson(flaggingContext).planName",
+              "subscription.tenure_days": "$parseJson(flaggingContext).tenureInDays",
+              "user.created": "userTimeCreated",
+              "user.email": "$parseJson(flaggingContext).email",
+              "user.id": "userId"
+            },
+            "id": "ai_auth_subscription",
+            "match": {
+              "method": "POST",
+              "url": "**/ai/auth"
+            },
+            "pipeline": [
+              {
+                "encoding": "base64",
+                "op": "decode"
+              },
+              {
+                "format": "json",
+                "op": "parse"
+              },
+              {
+                "field": "token",
+                "format": "jwt",
+                "op": "extract_auth"
+              }
+            ]
+          },
+          {
+            "extract": {
+              "user.email": "data.currentUser.email",
+              "user.first_name": "data.currentUser.firstName",
+              "user.id": "data.currentUser.id",
+              "user.image": "data.currentUser.image",
+              "user.last_name": "data.currentUser.lastName",
+              "user.username": "data.currentUser.username"
+            },
+            "id": "user_profile",
+            "match": {
+              "method": "POST",
+              "url": "**/graphql"
+            },
+            "pipeline": [
+              {
+                "encoding": "base64",
+                "op": "decode"
+              },
+              {
+                "format": "json",
+                "op": "parse"
+              }
+            ],
+            "when": "$exists(data.currentUser.email)"
+          },
+          {
+            "extract": {
+              "usage.daily_limit": "data.currentUser.aiFreeUsageLimits.agentUsageV2.dailyLimit",
+              "usage.daily_usage": "data.currentUser.aiFreeUsageLimits.agentUsageV2.dailyUsage",
+              "usage.is_under_daily_quota": "data.currentUser.aiFreeUsageLimits.agentUsageV2.isUnderDailyQuota",
+              "usage.is_under_monthly_quota": "data.currentUser.aiFreeUsageLimits.agentUsageV2.isUnderMonthlyQuota",
+              "usage.is_under_quota": "data.currentUser.aiFreeUsageLimits.agentUsageV2.isUnderQuota",
+              "usage.monthly_limit": "data.currentUser.aiFreeUsageLimits.agentUsageV2.monthlyLimit",
+              "usage.monthly_usage": "data.currentUser.aiFreeUsageLimits.agentUsageV2.monthlyUsage"
+            },
+            "id": "agent_usage",
+            "match": {
+              "method": "POST",
+              "url": "**/graphql"
+            },
+            "pipeline": [
+              {
+                "encoding": "base64",
+                "op": "decode"
+              },
+              {
+                "format": "json",
+                "op": "parse"
+              }
+            ],
+            "when": "$exists(data.currentUser.aiFreeUsageLimits)"
+          }
         ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Personal AI",
-        "pricing": {
-          "model": [
-            "subscription",
-            "enterprise"
-          ],
-          "tiers": [
-            {
-              "id": "starter",
-              "name": "Starter",
-              "type": "individual"
-            },
-            {
-              "id": "professional",
-              "name": "Professional",
-              "type": "individual"
-            },
-            {
-              "id": "enterprise",
-              "name": "Enterprise",
-              "type": "enterprise"
-            }
-          ]
-        },
-        "vendor": "Personal AI Inc.",
-        "vendor_url": "https://www.personal.ai/"
-      },
-      "pi": {
-        "api_domains": [
-          "pi.ai"
+        "domains": [
+          "replit.com"
         ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Pi",
-        "pricing": {
-          "model": [
-            "free"
-          ],
-          "tiers": [
-            {
-              "id": "free",
-              "monthly_usd": 0,
-              "name": "Free",
-              "type": "free"
-            }
-          ]
+        "features": {
+          "platform_creation": {
+            "description": "Create a new Replit app with AI assistance. Captures the user's prompt and the resulting app metadata.",
+            "endpoints": [
+              {
+                "extract": {
+                  "request.is_agent_stack": "$[operationName = 'CreateAgentReplCreateRepl'].variables.input.isAgentStack",
+                  "request.is_expert_mode": "$[operationName = 'CreateAgentReplCreateRepl'].variables.input.isExpertMode",
+                  "request.is_planning_phase": "$[operationName = 'CreateAgentReplCreateRepl'].variables.input.isInPlanningPhase",
+                  "request.is_private": "$[operationName = 'CreateAgentReplCreateRepl'].variables.input.isPrivate",
+                  "request.operation_name": "$[operationName = 'CreateAgentReplCreateRepl'].operationName",
+                  "request.prompt": "$[operationName = 'CreateAgentReplCreateRepl'].variables.input.aiPromptText",
+                  "request.stack_blueprint": "$[operationName = 'CreateAgentReplCreateRepl'].variables.input.initialStackBlueprint",
+                  "response.language": "$[data.createRepl].data.createRepl.language",
+                  "response.repl_id": "$[data.createRepl].data.createRepl.id",
+                  "response.slug": "$[data.createRepl].data.createRepl.slug",
+                  "response.title": "$[data.createRepl].data.createRepl.title",
+                  "response.url": "$[data.createRepl].data.createRepl.url",
+                  "response.user_id": "$[data.createRepl].data.createRepl.user.id",
+                  "response.username": "$[data.createRepl].data.createRepl.user.username"
+                },
+                "match": {
+                  "method": "POST",
+                  "url": "**/graphql"
+                },
+                "pipeline": [
+                  {
+                    "apply_to": "request",
+                    "format": "graphql",
+                    "op": "parse"
+                  },
+                  {
+                    "apply_to": "response",
+                    "format": "json",
+                    "op": "parse"
+                  }
+                ],
+                "role": "both"
+              }
+            ],
+            "name": "Create App",
+            "output": {
+              "include_raw": false,
+              "mode": "extract",
+              "normalize": {
+                "interaction.input.is_agent_stack": "$request.is_agent_stack",
+                "interaction.input.is_expert_mode": "$request.is_expert_mode",
+                "interaction.input.is_private": "$request.is_private",
+                "interaction.input.stack_blueprint": "$request.stack_blueprint",
+                "interaction.input.text": "$request.prompt",
+                "interaction.output.language": "$response.language",
+                "interaction.output.repl_id": "$response.repl_id",
+                "interaction.output.slug": "$response.slug",
+                "interaction.output.title": "$response.title",
+                "interaction.output.url": "$response.url",
+                "interaction.type": "'platform_creation'",
+                "interaction.user.id": "$response.user_id",
+                "interaction.user.username": "$response.username"
+              },
+              "tag": "ai:platform_creation"
+            },
+            "type": "platform_output"
+          }
         },
-        "vendor": "Inflection AI",
-        "vendor_url": "https://inflection.ai/"
-      },
-      "poe": {
-        "api_domains": [
-          "poe.com"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Poe",
-        "pricing": {
-          "model": [
-            "free",
-            "subscription"
-          ],
-          "tiers": [
-            {
-              "id": "free",
-              "monthly_usd": 0,
-              "name": "Free",
-              "type": "free"
-            },
-            {
-              "id": "monthly",
-              "name": "Monthly",
-              "type": "individual"
-            },
-            {
-              "id": "yearly",
-              "name": "Yearly",
-              "type": "individual"
-            }
-          ]
+        "id": "replit",
+        "meta": {
+          "docs_url": "https://docs.replit.com",
+          "notes": "Replit Agent uses GraphQL for app creation and WebSocket (River protocol) for real-time AI chat. The CreateAgentReplCreateRepl mutation captures platform creation with the user's AI prompt."
         },
-        "vendor": "Quora Inc.",
-        "vendor_url": "https://www.quora.com/"
-      },
-      "qwen": {
-        "api_domains": [
-          "qwen.ai"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Qwen",
-        "pricing": {
-          "model": [
-            "free",
-            "usage"
-          ],
-          "tiers": [
-            {
-              "id": "free",
-              "monthly_usd": 0,
-              "name": "Free",
-              "type": "free"
-            },
-            {
-              "id": "pay_as_you_go",
-              "name": "Pay As You Go",
-              "type": "usage"
-            }
-          ]
-        },
-        "vendor": "Alibaba Cloud",
-        "vendor_url": "https://www.alibabacloud.com/"
-      },
-      "rasa": {
-        "api_domains": [],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Rasa",
-        "pricing": {
-          "model": [
-            "free",
-            "enterprise"
-          ],
-          "tiers": [
-            {
-              "id": "free",
-              "monthly_usd": 0,
-              "name": "Free",
-              "type": "free"
-            },
-            {
-              "id": "rasa_pro",
-              "name": "Rasa Pro",
-              "type": "enterprise"
-            },
-            {
-              "id": "enterprise",
-              "name": "Enterprise",
-              "type": "enterprise"
-            }
-          ]
-        },
-        "vendor": "Rasa Technologies GmbH",
-        "vendor_url": "https://rasa.com/"
-      },
-      "replika": {
-        "api_domains": [
-          "my.replika.com"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Replika",
-        "pricing": {
-          "model": [
-            "free",
-            "subscription"
-          ],
-          "tiers": [
-            {
-              "id": "free",
-              "monthly_usd": 0,
-              "name": "Free",
-              "type": "free"
-            },
-            {
-              "id": "pro",
-              "name": "Pro",
-              "type": "individual"
-            },
-            {
-              "id": "lifetime",
-              "name": "Lifetime",
-              "type": "individual"
-            }
-          ]
-        },
-        "vendor": "Luka Inc.",
-        "vendor_url": "https://replika.com/"
-      },
-      "rezolve-ai": {
-        "api_domains": [],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Rezolve.ai",
-        "pricing": {
-          "model": [
-            "enterprise"
-          ],
-          "tiers": [
-            {
-              "id": "custom",
-              "name": "Custom",
-              "type": "enterprise"
-            }
-          ]
-        },
-        "vendor": "Rezolve AI Inc.",
-        "vendor_url": "https://www.rezolve.ai/"
-      },
-      "senseforth-ai": {
-        "api_domains": [],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Senseforth.ai",
-        "pricing": {
-          "model": [
-            "enterprise"
-          ],
-          "tiers": [
-            {
-              "id": "enterprise",
-              "name": "Enterprise",
-              "type": "enterprise"
-            }
-          ]
-        },
-        "vendor": "Senseforth AI Research Private Limited",
-        "vendor_url": "https://www.senseforth.ai/"
-      },
-      "servicenow": {
-        "api_domains": [],
-        "category": "ai-chat",
-        "features": {},
-        "name": "ServiceNow",
-        "pricing": {
-          "model": [
-            "enterprise"
-          ],
-          "tiers": [
-            {
-              "id": "standard",
-              "name": "Standard",
-              "type": "enterprise"
-            },
-            {
-              "id": "professional",
-              "name": "Professional",
-              "type": "enterprise"
-            },
-            {
-              "id": "enterprise",
-              "name": "Enterprise",
-              "type": "enterprise"
-            }
-          ]
-        },
-        "vendor": "ServiceNow Inc.",
-        "vendor_url": "https://www.servicenow.com/"
-      },
-      "sesame-ai": {
-        "api_domains": [],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Sesame AI",
-        "pricing": {
-          "model": [
-            "hardware",
-            "usage"
-          ],
-          "tiers": [
-            {
-              "id": "hardware",
-              "name": "Hardware",
-              "type": "hardware"
-            },
-            {
-              "id": "api_access",
-              "name": "API Access",
-              "type": "usage"
-            }
-          ]
-        },
-        "vendor": "Sesame AI Inc.",
-        "vendor_url": "https://www.sesame.com/"
-      },
-      "sierra-ai": {
-        "api_domains": [],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Sierra AI",
-        "pricing": {
-          "model": [
-            "enterprise"
-          ],
-          "tiers": [
-            {
-              "id": "custom",
-              "name": "Custom",
-              "type": "enterprise"
-            }
-          ]
-        },
-        "vendor": "Sierra AI Inc.",
-        "vendor_url": "https://sierra.ai/"
-      },
-      "silvia": {
-        "api_domains": [],
-        "category": "ai-chat",
-        "features": {},
-        "name": "SILVIA",
-        "pricing": {
-          "model": [
-            "enterprise"
-          ],
-          "tiers": [
-            {
-              "id": "enterprise",
-              "name": "Enterprise",
-              "type": "enterprise"
-            }
-          ]
-        },
-        "vendor": "Cognitive Code Corporation",
-        "vendor_url": "https://cognitivecode.com/"
-      },
-      "simsimi": {
-        "api_domains": [
-          "simsimi.com"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "SimSimi",
-        "pricing": {
-          "model": [
-            "free",
-            "in_app"
-          ],
-          "tiers": [
-            {
-              "id": "free",
-              "monthly_usd": 0,
-              "name": "Free",
-              "type": "free"
-            },
-            {
-              "id": "in_app_purchases",
-              "name": "In-App Purchases",
-              "type": "individual"
-            }
-          ]
-        },
-        "vendor": "SimSimi Inc.",
-        "vendor_url": "https://simsimi.com/"
-      },
-      "siri": {
-        "api_domains": [],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Siri",
-        "pricing": {
-          "model": [
-            "free"
-          ],
-          "tiers": [
-            {
-              "id": "free",
-              "monthly_usd": 0,
-              "name": "Free",
-              "type": "free"
-            }
-          ]
-        },
-        "vendor": "Apple Inc.",
-        "vendor_url": "https://www.apple.com/siri/"
-      },
-      "socrat-ai": {
-        "api_domains": [
-          "socrat.ai"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Socrat.ai",
-        "pricing": {
-          "model": [
-            "free",
-            "subscription",
-            "enterprise"
-          ],
-          "tiers": [
-            {
-              "id": "free",
-              "monthly_usd": 0,
-              "name": "Free",
-              "type": "free"
-            },
-            {
-              "id": "in_class",
-              "name": "In Class",
-              "type": "individual"
-            },
-            {
-              "id": "extended",
-              "name": "Extended",
-              "type": "individual"
-            },
-            {
-              "id": "school_wide",
-              "name": "School Wide",
-              "type": "enterprise"
-            }
-          ]
-        },
-        "vendor": "Pedagogy Ventures",
-        "vendor_url": "https://socrat.ai/"
-      },
-      "socratic": {
-        "api_domains": [],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Socratic",
-        "pricing": {
-          "model": [
-            "free"
-          ],
-          "tiers": [
-            {
-              "id": "free",
-              "monthly_usd": 0,
-              "name": "Free",
-              "type": "free"
-            }
-          ]
-        },
-        "vendor": "Google LLC",
-        "vendor_url": "https://socratic.org/"
-      },
-      "soundhound-ai": {
-        "api_domains": [],
-        "category": "ai-chat",
-        "features": {},
-        "name": "SoundHound AI",
-        "pricing": {
-          "model": [
-            "enterprise"
-          ],
-          "tiers": [
-            {
-              "id": "custom",
-              "name": "Custom",
-              "type": "enterprise"
-            }
-          ]
-        },
-        "vendor": "SoundHound AI Inc.",
-        "vendor_url": "https://www.soundhound.com/"
-      },
-      "stepfun": {
-        "api_domains": [
-          "stepchat.cn"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "StepFun",
-        "pricing": {
-          "model": [
-            "free",
-            "usage"
-          ],
-          "tiers": [
-            {
-              "id": "free",
-              "monthly_usd": 0,
-              "name": "Free",
-              "type": "free"
-            },
-            {
-              "id": "api_access",
-              "name": "API Access",
-              "type": "usage"
-            }
-          ]
-        },
-        "vendor": "Stepfun Technology",
-        "vendor_url": "https://www.stepfun.com/"
-      },
-      "superchinese": {
-        "api_domains": [
-          "www.superchinese.com"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "SuperChinese",
-        "pricing": {
-          "model": [
-            "free",
-            "subscription"
-          ],
-          "tiers": [
-            {
-              "id": "free",
-              "monthly_usd": 0,
-              "name": "Free",
-              "type": "free"
-            },
-            {
-              "id": "plus",
-              "name": "Plus",
-              "type": "individual"
-            },
-            {
-              "id": "vip_pro",
-              "name": "VIP Pro",
-              "type": "individual"
-            },
-            {
-              "id": "ai_chao",
-              "name": "AI Chao",
-              "type": "individual"
-            }
-          ]
-        },
-        "vendor": "Shanghai Yuxuan Information Technology Co., Ltd.",
-        "vendor_url": "https://www.superchinese.com/"
-      },
-      "talkie": {
-        "api_domains": [
-          "talkie-ai.com"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Talkie",
-        "pricing": {
-          "model": [
-            "free",
-            "subscription"
-          ],
-          "tiers": [
-            {
-              "id": "free",
-              "monthly_usd": 0,
-              "name": "Free",
-              "type": "free"
-            },
-            {
-              "id": "premium",
-              "name": "Premium",
-              "type": "individual"
-            }
-          ]
-        },
-        "vendor": "Talkie AI Inc.",
-        "vendor_url": "https://talkie-ai.com/"
-      },
-      "tars": {
-        "api_domains": [
-          "admin.hellotars.com"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Tars",
-        "pricing": {
-          "model": [
-            "subscription",
-            "enterprise"
-          ],
-          "tiers": [
-            {
-              "id": "business",
-              "name": "Business",
-              "type": "team"
-            },
-            {
-              "id": "premium",
-              "name": "Premium",
-              "type": "team"
-            },
-            {
-              "id": "enterprise",
-              "name": "Enterprise",
-              "type": "enterprise"
-            }
-          ]
-        },
-        "vendor": "Tars Technologies Inc.",
-        "vendor_url": "https://hellotars.com/"
-      },
-      "tidio-lyro": {
-        "api_domains": [
-          "www.tidio.com"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Tidio Lyro",
+        "name": "Replit",
         "pricing": {
           "model": [
             "free",
@@ -48172,383 +46626,33 @@
             },
             {
               "id": "starter",
+              "monthly_usd": 0,
               "name": "Starter",
+              "type": "free"
+            },
+            {
+              "id": "replit-core",
+              "monthly_usd": 25,
+              "name": "Replit Core",
               "type": "individual"
             },
             {
-              "id": "growth",
-              "name": "Growth",
-              "type": "individual"
-            },
-            {
-              "id": "plus",
-              "name": "Plus",
-              "type": "team"
-            },
-            {
-              "id": "premium",
-              "name": "Premium",
-              "type": "team"
-            }
-          ]
-        },
-        "vendor": "Tidio LLC",
-        "vendor_url": "https://www.tidio.com/"
-      },
-      "ultra-hal": {
-        "api_domains": [],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Ultra Hal",
-        "pricing": {
-          "model": [
-            "subscription"
-          ],
-          "tiers": [
-            {
-              "id": "paid",
-              "name": "Paid",
-              "type": "individual"
-            }
-          ]
-        },
-        "vendor": "Zabaware Inc.",
-        "vendor_url": "https://zabaware.com/"
-      },
-      "uniphore": {
-        "api_domains": [],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Uniphore",
-        "pricing": {
-          "model": [
-            "enterprise"
-          ],
-          "tiers": [
-            {
-              "id": "custom",
-              "name": "Custom",
-              "type": "enterprise"
-            }
-          ]
-        },
-        "vendor": "Uniphore Software Systems",
-        "vendor_url": "https://www.uniphore.com/"
-      },
-      "verloop-io": {
-        "api_domains": [
-          "app.verloop.io"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Verloop.io",
-        "pricing": {
-          "model": [
-            "subscription",
-            "enterprise"
-          ],
-          "tiers": [
-            {
-              "id": "starter",
-              "name": "Starter",
-              "type": "individual"
-            },
-            {
-              "id": "business",
-              "name": "Business",
+              "id": "teams",
+              "monthly_usd": null,
+              "name": "Teams",
               "type": "team"
             },
             {
               "id": "enterprise",
+              "monthly_usd": null,
               "name": "Enterprise",
               "type": "enterprise"
             }
           ]
         },
-        "vendor": "Verloop.io",
-        "vendor_url": "https://verloop.io/"
-      },
-      "yellow-ai": {
-        "api_domains": [
-          "cloud.yellow.ai"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Yellow.ai",
-        "pricing": {
-          "model": [
-            "enterprise"
-          ],
-          "tiers": [
-            {
-              "id": "custom",
-              "name": "Custom",
-              "type": "enterprise"
-            }
-          ]
-        },
-        "vendor": "Yellow.ai Inc.",
-        "vendor_url": "https://yellow.ai/"
-      },
-      "youchat": {
-        "api_domains": [
-          "you.com"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "YouChat",
-        "pricing": {
-          "model": [
-            "free",
-            "subscription",
-            "enterprise"
-          ],
-          "tiers": [
-            {
-              "id": "free",
-              "monthly_usd": 0,
-              "name": "Free",
-              "type": "free"
-            },
-            {
-              "id": "pro",
-              "name": "Pro",
-              "type": "individual"
-            },
-            {
-              "id": "team",
-              "name": "Team",
-              "type": "team"
-            },
-            {
-              "id": "enterprise",
-              "name": "Enterprise",
-              "type": "enterprise"
-            }
-          ]
-        },
-        "vendor": "You.com Inc.",
-        "vendor_url": "https://you.com/"
-      },
-      "yuanbao": {
-        "api_domains": [
-          "yuanbao.tencent.com"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Yuanbao",
-        "pricing": {
-          "model": [
-            "free",
-            "usage"
-          ],
-          "tiers": [
-            {
-              "id": "free",
-              "monthly_usd": 0,
-              "name": "Free",
-              "type": "free"
-            },
-            {
-              "id": "api_access",
-              "name": "API Access",
-              "type": "usage"
-            }
-          ]
-        },
-        "vendor": "Tencent Holdings Ltd.",
-        "vendor_url": "https://www.tencent.com/"
-      },
-      "zapier-agents": {
-        "api_domains": [
-          "zapier.com"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Zapier Agents",
-        "pricing": {
-          "model": [
-            "free",
-            "subscription",
-            "enterprise"
-          ],
-          "tiers": [
-            {
-              "id": "free",
-              "monthly_usd": 0,
-              "name": "Free",
-              "type": "free"
-            },
-            {
-              "id": "starter",
-              "name": "Starter",
-              "type": "individual"
-            },
-            {
-              "id": "professional",
-              "name": "Professional",
-              "type": "individual"
-            },
-            {
-              "id": "team",
-              "name": "Team",
-              "type": "team"
-            },
-            {
-              "id": "enterprise",
-              "name": "Enterprise",
-              "type": "enterprise"
-            }
-          ]
-        },
-        "vendor": "Zapier Inc.",
-        "vendor_url": "https://zapier.com/"
-      },
-      "zapier-chatbots": {
-        "api_domains": [
-          "zapier.com"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Zapier Chatbots",
-        "pricing": {
-          "model": [
-            "free",
-            "subscription",
-            "enterprise"
-          ],
-          "tiers": [
-            {
-              "id": "free",
-              "monthly_usd": 0,
-              "name": "Free",
-              "type": "free"
-            },
-            {
-              "id": "pro",
-              "name": "Pro",
-              "type": "individual"
-            },
-            {
-              "id": "advanced",
-              "name": "Advanced",
-              "type": "team"
-            },
-            {
-              "id": "custom",
-              "name": "Custom",
-              "type": "enterprise"
-            }
-          ]
-        },
-        "vendor": "Zapier Inc.",
-        "vendor_url": "https://zapier.com/"
-      },
-      "zendesk": {
-        "api_domains": [
-          "www.zendesk.com"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Zendesk",
-        "pricing": {
-          "model": [
-            "subscription",
-            "enterprise"
-          ],
-          "tiers": [
-            {
-              "id": "suite_team",
-              "name": "Suite Team",
-              "type": "team"
-            },
-            {
-              "id": "suite_professional",
-              "name": "Suite Professional",
-              "type": "team"
-            },
-            {
-              "id": "suite_enterprise",
-              "name": "Suite Enterprise",
-              "type": "enterprise"
-            }
-          ]
-        },
-        "vendor": "Zendesk Inc.",
-        "vendor_url": "https://www.zendesk.com/"
-      },
-      "zenochat": {
-        "api_domains": [
-          "app.textcortex.com"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "ZenoChat",
-        "pricing": {
-          "model": [
-            "free",
-            "subscription"
-          ],
-          "tiers": [
-            {
-              "id": "free",
-              "monthly_usd": 0,
-              "name": "Free",
-              "type": "free"
-            },
-            {
-              "id": "lite",
-              "name": "Lite",
-              "type": "individual"
-            },
-            {
-              "id": "unlimited",
-              "name": "Unlimited",
-              "type": "individual"
-            }
-          ]
-        },
-        "vendor": "TextCortex AI",
-        "vendor_url": "https://textcortex.com/"
-      },
-      "zoho-salesiq": {
-        "api_domains": [
-          "salesiq.zoho.com"
-        ],
-        "category": "ai-chat",
-        "features": {},
-        "name": "Zoho SalesIQ",
-        "pricing": {
-          "model": [
-            "free",
-            "subscription"
-          ],
-          "tiers": [
-            {
-              "id": "free",
-              "monthly_usd": 0,
-              "name": "Free",
-              "type": "free"
-            },
-            {
-              "id": "basic",
-              "name": "Basic",
-              "type": "individual"
-            },
-            {
-              "id": "pro",
-              "name": "Pro",
-              "type": "individual"
-            },
-            {
-              "id": "enterprise",
-              "name": "Enterprise",
-              "type": "team"
-            }
-          ]
-        },
-        "vendor": "Zoho Corporation",
-        "vendor_url": "https://www.zoho.com/"
+        "source_type": "website",
+        "vendor": "Replit",
+        "vendor_url": "https://replit.com"
       }
     }
   },

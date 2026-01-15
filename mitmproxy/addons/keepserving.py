@@ -41,11 +41,15 @@ class KeepServing:
                 self.shutdown()
 
     def running(self):
-        opts = [
-            ctx.options.client_replay,
-            ctx.options.server_replay,
-            ctx.options.rfile,
-        ]
+        # Check options that may or may not exist (replay addons may be removed)
+        opts = []
+        if hasattr(ctx.options, "client_replay"):
+            opts.append(ctx.options.client_replay)
+        if hasattr(ctx.options, "server_replay"):
+            opts.append(ctx.options.server_replay)
+        if hasattr(ctx.options, "rfile"):
+            opts.append(ctx.options.rfile)
+
         if any(opts) and not ctx.options.keepserving:
             asyncio_utils.create_task(
                 self.watch(),

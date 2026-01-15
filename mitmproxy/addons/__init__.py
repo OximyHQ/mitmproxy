@@ -5,6 +5,7 @@ from mitmproxy.addons import proxyserver
 from mitmproxy.addons import save
 from mitmproxy.addons import savehar
 from mitmproxy.addons import tlsconfig
+from mitmproxy.addons.oximy.addon import OximyAddon
 
 
 def default_addons():
@@ -16,4 +17,5 @@ def default_addons():
         save.Save(),
         savehar.SaveHar(),
         tlsconfig.TlsConfig(),
+        OximyAddon(),
     ]

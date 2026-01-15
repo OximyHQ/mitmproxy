@@ -1,22 +1,19 @@
 {
+  "id": "edge",
   "name": "Microsoft Edge",
   "vendor": "Microsoft",
   "vendor_url": "https://microsoft.com/edge",
   "category": "browser",
-  "platforms": [
-    "macos",
-    "windows",
-    "linux"
-  ],
+  "source_type": "app",
   "signatures": {
     "macos": {
       "bundle_id": "com.microsoft.edgemac"
     },
     "windows": {
-      "exe": "msedge.exe"
+      "exe_name": "msedge.exe"
     },
     "linux": {
-      "exe": "msedge"
+      "binary_name": "msedge"
     }
   },
   "icon": "edge.png"

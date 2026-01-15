@@ -1,0 +1,147 @@
+{
+  "$schema": "../schemas/tool-config.schema.json",
+
+  "id": "replit",
+  "name": "Replit",
+  "vendor": "Replit",
+  "vendor_url": "https://replit.com",
+  "category": "agent",
+
+  "source_type": "website",
+
+  "domains": [
+    "replit.com"
+  ],
+
+  "meta": {
+    "docs_url": "https://docs.replit.com",
+    "notes": "Replit Agent uses GraphQL for app creation and WebSocket (River protocol) for real-time AI chat. The CreateAgentReplCreateRepl mutation captures platform creation with the user's AI prompt."
+  },
+
+  "features": {
+    "platform_creation": {
+      "type": "platform_output",
+      "name": "Create App",
+      "description": "Create a new Replit app with AI assistance. Captures the user's prompt and the resulting app metadata.",
+
+      "endpoints": [
+        {
+          "role": "both",
+          "match": {
+            "url": "**/graphql",
+            "method": "POST"
+          },
+          "pipeline": [
+            { "op": "parse", "format": "graphql", "apply_to": "request" },
+            { "op": "parse", "format": "json", "apply_to": "response" }
+          ],
+          "extract": {
+            "request.operation_name": "$[operationName = 'CreateAgentReplCreateRepl'].operationName",
+            "request.prompt": "$[operationName = 'CreateAgentReplCreateRepl'].variables.input.aiPromptText",
+            "request.stack_blueprint": "$[operationName = 'CreateAgentReplCreateRepl'].variables.input.initialStackBlueprint",
+            "request.is_private": "$[operationName = 'CreateAgentReplCreateRepl'].variables.input.isPrivate",
+            "request.is_agent_stack": "$[operationName = 'CreateAgentReplCreateRepl'].variables.input.isAgentStack",
+            "request.is_expert_mode": "$[operationName = 'CreateAgentReplCreateRepl'].variables.input.isExpertMode",
+            "request.is_planning_phase": "$[operationName = 'CreateAgentReplCreateRepl'].variables.input.isInPlanningPhase",
+            "response.repl_id": "$[data.createRepl].data.createRepl.id",
+            "response.title": "$[data.createRepl].data.createRepl.title",
+            "response.url": "$[data.createRepl].data.createRepl.url",
+            "response.slug": "$[data.createRepl].data.createRepl.slug",
+            "response.language": "$[data.createRepl].data.createRepl.language",
+            "response.user_id": "$[data.createRepl].data.createRepl.user.id",
+            "response.username": "$[data.createRepl].data.createRepl.user.username"
+          }
+        }
+      ],
+
+      "output": {
+        "mode": "extract",
+        "tag": "ai:platform_creation",
+        "normalize": {
+          "interaction.type": "'platform_creation'",
+          "interaction.input.text": "$request.prompt",
+          "interaction.input.stack_blueprint": "$request.stack_blueprint",
+          "interaction.input.is_private": "$request.is_private",
+          "interaction.input.is_agent_stack": "$request.is_agent_stack",
+          "interaction.input.is_expert_mode": "$request.is_expert_mode",
+          "interaction.output.repl_id": "$response.repl_id",
+          "interaction.output.title": "$response.title",
+          "interaction.output.url": "$response.url",
+          "interaction.output.slug": "$response.slug",
+          "interaction.output.language": "$response.language",
+          "interaction.user.id": "$response.user_id",
+          "interaction.user.username": "$response.username"
+        },
+        "include_raw": false
+      }
+    }
+  },
+
+  "detection": [
+    {
+      "id": "ai_auth_subscription",
+      "match": { "url": "**/ai/auth", "method": "POST" },
+      "pipeline": [
+        { "op": "decode", "encoding": "base64" },
+        { "op": "parse", "format": "json" },
+        { "op": "extract_auth", "format": "jwt", "field": "token" }
+      ],
+      "extract": {
+        "user.id": "userId",
+        "user.created": "userTimeCreated",
+        "subscription.membership": "membership",
+        "subscription.has_ai_pro": "hasReplitAiPro",
+        "subscription.is_enterprise": "isEnterprise",
+        "subscription.plan_name": "$parseJson(flaggingContext).planName",
+        "subscription.tenure_days": "$parseJson(flaggingContext).tenureInDays",
+        "user.email": "$parseJson(flaggingContext).email"
+      }
+    },
+    {
+      "id": "user_profile",
+      "match": { "url": "**/graphql", "method": "POST" },
+      "pipeline": [
+        { "op": "decode", "encoding": "base64" },
+        { "op": "parse", "format": "json" }
+      ],
+      "when": "$exists(data.currentUser.email)",
+      "extract": {
+        "user.id": "data.currentUser.id",
+        "user.email": "data.currentUser.email",
+        "user.username": "data.currentUser.username",
+        "user.first_name": "data.currentUser.firstName",
+        "user.last_name": "data.currentUser.lastName",
+        "user.image": "data.currentUser.image"
+      }
+    },
+    {
+      "id": "agent_usage",
+      "match": { "url": "**/graphql", "method": "POST" },
+      "pipeline": [
+        { "op": "decode", "encoding": "base64" },
+        { "op": "parse", "format": "json" }
+      ],
+      "when": "$exists(data.currentUser.aiFreeUsageLimits)",
+      "extract": {
+        "usage.daily_usage": "data.currentUser.aiFreeUsageLimits.agentUsageV2.dailyUsage",
+        "usage.daily_limit": "data.currentUser.aiFreeUsageLimits.agentUsageV2.dailyLimit",
+        "usage.monthly_usage": "data.currentUser.aiFreeUsageLimits.agentUsageV2.monthlyUsage",
+        "usage.monthly_limit": "data.currentUser.aiFreeUsageLimits.agentUsageV2.monthlyLimit",
+        "usage.is_under_quota": "data.currentUser.aiFreeUsageLimits.agentUsageV2.isUnderQuota",
+        "usage.is_under_daily_quota": "data.currentUser.aiFreeUsageLimits.agentUsageV2.isUnderDailyQuota",
+        "usage.is_under_monthly_quota": "data.currentUser.aiFreeUsageLimits.agentUsageV2.isUnderMonthlyQuota"
+      }
+    }
+  ],
+
+  "pricing": {
+    "model": ["free", "subscription"],
+    "tiers": [
+      { "id": "free", "name": "Free", "type": "free", "monthly_usd": 0 },
+      { "id": "starter", "name": "Starter", "type": "free", "monthly_usd": 0 },
+      { "id": "replit-core", "name": "Replit Core", "type": "individual", "monthly_usd": 25 },
+      { "id": "teams", "name": "Teams", "type": "team", "monthly_usd": null },
+      { "id": "enterprise", "name": "Enterprise", "type": "enterprise", "monthly_usd": null }
+    ]
+  }
+}

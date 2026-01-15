@@ -1,0 +1,125 @@
+{
+  "$schema": "../schemas/tool-config.schema.json",
+
+  "id": "raycast",
+  "name": "Raycast",
+  "vendor": "Raycast",
+  "vendor_url": "https://raycast.com",
+  "category": "productivity",
+
+  "source_type": "app",
+
+  "api_domains": [
+    "backend.raycast.com"
+  ],
+
+  "signatures": {
+    "macos": {
+      "bundle_id": "com.raycast.macos",
+      "team_id": "SY64MV22J9"
+    }
+  },
+
+  "icon": "raycast.png",
+
+  "meta": {
+    "docs_url": "https://manual.raycast.com"
+  },
+
+  "features": {
+    "ai_chat": {
+      "type": "chat",
+      "name": "AI Chat",
+      "description": "Chat with AI in Raycast. Filter by source='ai_chat' to exclude internal title generation requests.",
+
+      "endpoints": [
+        {
+          "role": "both",
+          "match": {
+            "url": "**/api/v1/ai/chat_completions",
+            "method": "POST"
+          },
+          "pipeline": [
+            { "op": "parse", "format": "json", "apply_to": "request" },
+            {
+              "op": "stream",
+              "transport": "sse",
+              "apply_to": "response",
+              "options": {
+                "prefixes": ["data: "]
+              }
+            },
+            {
+              "op": "accumulate",
+              "apply_to": "response",
+              "rules": [
+                { "when": "$exists(text)", "set": { "content": "text" } },
+                { "when": "$exists(finish_reason)", "set": { "finish_reason": "finish_reason" } }
+              ],
+              "fields": {
+                "content": { "from": "content", "method": "concat" },
+                "finish_reason": { "from": "finish_reason", "method": "last" }
+              }
+            }
+          ],
+          "extract": {
+            "request.source": "source",
+            "request.thread_id": "thread_id",
+            "request.message_id": "message_id",
+            "request.user_message": "messages[-1].content.text",
+            "request.model": "model",
+            "request.provider": "provider",
+            "request.temperature": "temperature",
+            "response.content": "$accumulated.content",
+            "response.finish_reason": "$accumulated.finish_reason"
+          }
+        }
+      ],
+
+      "output": {
+        "mode": "extract",
+        "tag": "ai:chat",
+        "normalize": {
+          "interaction.type": "'chat'",
+          "interaction.source": "$request.source",
+          "interaction.thread_id": "$request.thread_id",
+          "interaction.message_id": "$request.message_id",
+          "interaction.input.text": "$request.user_message",
+          "interaction.output.text": "$response.content",
+          "interaction.model": "$request.model",
+          "interaction.provider": "$request.provider"
+        },
+        "include_raw": false
+      }
+    }
+  },
+
+  "detection": [
+    {
+      "id": "user_subscription",
+      "match": { "url": "**/api/v1/me" },
+      "pipeline": [
+        { "op": "decode", "encoding": "base64" },
+        { "op": "parse", "format": "json" }
+      ],
+      "extract": {
+        "user.id": "id",
+        "user.email": "email",
+        "user.name": "name",
+        "subscription.plan": "subscription",
+        "subscription.has_active": "has_active_subscription",
+        "subscription.has_pro_features": "has_pro_features",
+        "subscription.eligible_for_ai": "eligible_for_ai"
+      }
+    }
+  ],
+
+  "pricing": {
+    "model": ["subscription"],
+    "tiers": [
+      { "id": "free", "name": "Free", "type": "free", "monthly_usd": 0 },
+      { "id": "pro", "name": "Pro", "type": "individual", "monthly_usd": 8 },
+      { "id": "teams", "name": "Teams", "type": "team", "monthly_usd": 12 }
+    ]
+  }
+}

@@ -1,22 +1,19 @@
 {
+  "id": "vivaldi",
   "name": "Vivaldi",
   "vendor": "Vivaldi Technologies",
   "vendor_url": "https://vivaldi.com",
   "category": "browser",
-  "platforms": [
-    "macos",
-    "windows",
-    "linux"
-  ],
+  "source_type": "app",
   "signatures": {
     "macos": {
       "bundle_id": "com.vivaldi.Vivaldi"
     },
     "windows": {
-      "exe": "vivaldi.exe"
+      "exe_name": "vivaldi.exe"
     },
     "linux": {
-      "exe": "vivaldi"
+      "binary_name": "vivaldi"
     }
   },
   "icon": "vivaldi.png"

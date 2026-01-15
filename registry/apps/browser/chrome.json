@@ -1,22 +1,19 @@
 {
+  "id": "chrome",
   "name": "Google Chrome",
   "vendor": "Google",
   "vendor_url": "https://google.com/chrome",
   "category": "browser",
-  "platforms": [
-    "macos",
-    "windows",
-    "linux"
-  ],
+  "source_type": "app",
   "signatures": {
     "macos": {
       "bundle_id": "com.google.Chrome"
     },
     "windows": {
-      "exe": "chrome.exe"
+      "exe_name": "chrome.exe"
     },
     "linux": {
-      "exe": "chrome"
+      "binary_name": "chrome"
     }
   },
   "icon": "google-chrome.png"

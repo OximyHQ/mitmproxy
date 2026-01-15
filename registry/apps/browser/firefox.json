@@ -1,22 +1,19 @@
 {
+  "id": "firefox",
   "name": "Firefox",
   "vendor": "Mozilla",
   "vendor_url": "https://mozilla.org/firefox",
   "category": "browser",
-  "platforms": [
-    "macos",
-    "windows",
-    "linux"
-  ],
+  "source_type": "app",
   "signatures": {
     "macos": {
       "bundle_id": "org.mozilla.firefox"
     },
     "windows": {
-      "exe": "firefox.exe"
+      "exe_name": "firefox.exe"
     },
     "linux": {
-      "exe": "firefox"
+      "binary_name": "firefox"
     }
   },
   "icon": "firefox.png"

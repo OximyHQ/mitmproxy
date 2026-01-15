@@ -1,0 +1,84 @@
+{
+  "$schema": "../schemas/tool-config.schema.json",
+
+  "id": "cursor",
+  "name": "Cursor",
+  "vendor": "Anysphere",
+  "vendor_url": "https://cursor.com",
+  "category": "coding",
+
+  "source_type": "app",
+
+  "api_domains": [
+    "api2.cursor.sh",
+    "api3.cursor.sh"
+  ],
+
+  "signatures": {
+    "macos": {
+      "bundle_id": "com.todesktop.230313mzl4w4u92",
+      "team_id": "VDXQ22DGB9"
+    },
+    "windows": {
+      "exe_name": "Cursor.exe",
+      "publisher": "Anysphere Inc"
+    },
+    "linux": {
+      "binary_name": "cursor",
+      "desktop_file": "cursor.desktop"
+    }
+  },
+
+  "icon": "cursor.png",
+
+  "meta": {
+    "docs_url": "https://docs.cursor.com",
+    "protocol": "connect-rpc-protobuf",
+    "_notes": "Cursor uses Connect RPC with Protocol Buffers. Feature extraction requires protobuf parsing."
+  },
+
+  "features": {},
+
+  "detection": [
+    {
+      "id": "stripe_profile",
+      "match": { "url": "**/auth/full_stripe_profile", "method": "GET" },
+      "pipeline": [
+        { "op": "decode", "encoding": "base64" },
+        { "op": "parse", "format": "json" }
+      ],
+      "extract": {
+        "subscription.plan": "membershipType",
+        "subscription.status": "subscriptionStatus",
+        "subscription.is_team_member": "isTeamMember",
+        "subscription.team_membership_type": "teamMembershipType"
+      }
+    },
+    {
+      "id": "statsig_user",
+      "match": { "url": "**/tev1/v1/rgstr**", "method": "POST" },
+      "extract_from": "request_body",
+      "pipeline": [
+        { "op": "decode", "encoding": "base64" },
+        { "op": "decode", "encoding": "gzip" },
+        { "op": "parse", "format": "json" }
+      ],
+      "when": "$exists(events[0].user.userID)",
+      "extract": {
+        "user.id": "events[0].user.userID",
+        "subscription.plan": "events[0].user.custom.stripeMembershipStatus",
+        "privacy.mode_type": "events[0].user.custom.privacyModeType",
+        "enterprise.is_user": "events[0].user.custom.isEnterpriseUser"
+      }
+    }
+  ],
+
+  "pricing": {
+    "model": ["subscription", "usage"],
+    "tiers": [
+      { "id": "hobby", "name": "Hobby", "type": "free", "monthly_usd": 0 },
+      { "id": "pro", "name": "Pro", "type": "individual", "monthly_usd": 20 },
+      { "id": "business", "name": "Business", "type": "team", "monthly_usd": 40 }
+    ]
+  }
+}

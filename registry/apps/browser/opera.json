@@ -1,22 +1,19 @@
 {
+  "id": "opera",
   "name": "Opera",
   "vendor": "Opera Software",
   "vendor_url": "https://opera.com",
   "category": "browser",
-  "platforms": [
-    "macos",
-    "windows",
-    "linux"
-  ],
+  "source_type": "app",
   "signatures": {
     "macos": {
       "bundle_id": "com.operasoftware.Opera"
     },
     "windows": {
-      "exe": "opera.exe"
+      "exe_name": "opera.exe"
     },
     "linux": {
-      "exe": "opera"
+      "binary_name": "opera"
     }
   },
   "icon": "opera.png"
